@@ -30,8 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — credenciales NUNCA en el repo; solo se versiona la plantilla
 .env*
+!.env.example
+
+# supabase local
+supabase/.temp
 
 # vercel
 .vercel

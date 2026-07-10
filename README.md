@@ -1,36 +1,20 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Registro de Asistencia — SaaS multi-empresa
 
-## Getting Started
+Checador digital para el mercado mexicano: registro electrónico y verificable
+de jornada laboral, en cumplimiento de la reforma laboral obligatoria a partir
+del **1 de enero de 2027**.
 
-First, run the development server:
+- **Arquitectura y reglas del proyecto**: [ARCHITECTURE.md](./ARCHITECTURE.md)
+- **Cómo levantarlo localmente**: [docs/SETUP.md](./docs/SETUP.md)
+- **Documento maestro de decisiones**: `docs/documento-maestro.txt`
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Next.js (App Router) + TypeScript + Tailwind CSS + shadcn/ui · PostgreSQL vía
+Supabase (Auth + RLS + Storage) · Vercel + Supabase (MVP).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Estado
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Fase 0 — Cimientos**: estructura del repo, esquema inicial con Row Level
+Security en todas las tablas, login de administrador, módulo de cifrado
+AES-256-GCM y prueba de aislamiento multi-tenant (`npm run test:rls`).

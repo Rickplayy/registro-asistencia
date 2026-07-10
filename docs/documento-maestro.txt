@@ -1,0 +1,400 @@
+
+Sistema de Registro de Asistencia Digital
+Documento maestro: arquitectura, vistas, paleta de colores, flujo de datos, base de datos y módulo de nómina
+Producto SaaS multi-empresa para cumplir la reforma laboral de registro electrónico de jornada (obligatoria a partir del 1 de enero de 2027)
+Preparado para Ricardo · Julio 2026
+
+
+Contenido
+1. Introducción y objetivo del documento
+2. Marco legal y de cumplimiento
+3. Plataforma y stack tecnológico recomendado
+4. Arquitectura del sistema
+5. Métodos de registro de asistencia
+6. Seguridad y cifrado
+7. Paleta de colores
+8. Propuesta de vistas
+9. Diagrama de flujo de datos
+10. Modelo de base de datos
+11. Módulo de incidencias y proyección de nómina
+12. Estructura del proyecto (para desarrollo con Claude Code)
+13. Hoja de ruta de desarrollo
+14. Notas finales y próximos pasos
+
+
+1. Introducción y objetivo del documento
+Este documento reúne, en un solo lugar, todas las decisiones de diseño y arquitectura tomadas para el sistema de registro de asistencia: qué se va a construir y por qué, con qué tecnología, cómo se ve cada pantalla, cómo viajan y se protegen los datos, cómo está organizada la base de datos, y cómo se calculan las incidencias de nómina (horas, retardos, faltas, bonos).
+El sistema es un producto SaaS multi-empresa: una sola aplicación que da servicio a distintas empresas clientes, cada una con sus propios empleados, configuración y datos completamente aislados entre sí. Su razón de ser es la reforma laboral mexicana que obliga, a partir del 1 de enero de 2027, a que todo centro de trabajo cuente con un registro electrónico y verificable de la jornada laboral.
+Cada decisión documentada aquí incluye su justificación — por qué ese stack, por qué esa paleta, por qué ese modelo de datos — para que sirva como referencia de trabajo tanto para decisiones de negocio como para el desarrollo del producto con Claude Code.
+2. Marco legal y de cumplimiento
+2.1 Reforma de jornada laboral y registro electrónico
+La reforma reduce la jornada laboral de forma gradual: 48 h (2026), 46 h (2027), 44 h (2028), 42 h (2029), 40 h (2030).
+A partir del 1 de enero de 2027 será exigible de forma plena el registro electrónico de asistencia en todos los centros de trabajo.
+El registro debe ser electrónico y verificable; los relojes de papel o sin conexión no cumplen con la ley.
+La STPS emitirá lineamientos técnicos específicos durante el periodo de transición (hasta el 31 de diciembre de 2026); a la fecha de este documento aún no están publicados en su totalidad, por lo que el sistema debe diseñarse con capacidad de adaptación (formatos de exportación configurables, campos extensibles).
+Las multas por incumplimiento van de 250 a 5,000 UMA (aproximadamente $29,327 a $586,550 MXN).
+2.2 Protección de datos personales y biométricos (LFPDPPP)
+Los datos biométricos se consideran datos personales sensibles: requieren consentimiento expreso y por escrito antes de su recolección.
+Debe existir un Aviso de Privacidad específico que informe la finalidad, el tratamiento y las transferencias de los datos biométricos.
+Se exigen medidas de seguridad administrativas, técnicas y físicas para evitar acceso, daño, pérdida o divulgación no autorizada.
+Los titulares (empleados) tienen derechos ARCO: acceso, rectificación, cancelación y oposición sobre sus datos.
+El INAI puede imponer multas de hasta 320,000 UMA (~$36 millones MXN) por incumplimiento grave.
+2.3 Reglas de la Ley Federal del Trabajo aplicables a nómina e incidencias
+Estas reglas rigen el módulo descrito en la sección 11 y no son configurables por ninguna empresa cliente — el sistema debe impedir que se configure algo que las viole.
+Regla
+Qué dice la ley
+Cómo se traduce en el sistema
+Retardos
+No se puede descontar por minutos de retardo; el salario se paga íntegro por el tiempo laborado (Art. 110 LFT no lo contempla como causal de descuento).
+Nunca se calcula un descuento en pesos por retardos. Solo pueden acumularse hacia una falta si el reglamento interior de la empresa lo define así.
+Tope de descuentos
+Cualquier descuento autorizado no puede exceder el 30% del excedente sobre el salario mínimo vigente, y nunca puede dejar al trabajador por debajo del salario mínimo general.
+configuracion_nomina.tope_descuento_pct tiene un máximo de 30, validado en el backend. El cálculo final siempre se compara contra el salario mínimo antes de aplicarse.
+Faltas injustificadas
+Un día no laborado no se paga; si la falta rompe el ciclo de 6 días, se pierde también la parte proporcional del séptimo día con goce de sueldo (Art. 69 LFT).
+El cálculo de incidencias resta el día no laborado y, cuando aplica, la parte proporcional del día de descanso.
+Reincidencia de faltas
+Más de 3 faltas injustificadas en 30 días es causal de rescisión sin responsabilidad para el patrón.
+El sistema genera una alerta para RH; nunca ejecuta una acción automática — la decisión siempre es humana.
+Horas extra
+Las primeras 9 horas extra a la semana se pagan al doble; el excedente se paga al triple (Art. 66-68 LFT).
+El motor calcula horas_extra_dobles y horas_extra_triples por separado a partir del check-in/check-out real.
+Nota: este documento resume el marco regulatorio con fines de diseño técnico y no sustituye asesoría legal. Antes de comercializar el producto se recomienda validar el aviso de privacidad, los flujos de consentimiento y el reglamento interior de trabajo con un abogado especializado.
+3. Plataforma y stack tecnológico recomendado
+Se recomienda una aplicación web (no una app de escritorio nativa): las empresas cliente necesitan acceso desde cualquier dispositivo sin instalar nada, los kioscos de fichaje pueden ser una tablet, laptop o PC con navegador en modo pantalla completa, y un solo despliegue sirve a todos los clientes.
+3.1 Stack recomendado (pensado para desarrollo individual con Claude Code)
+Capa
+Tecnología
+Por qué
+Frontend
+Next.js 14+ (React) + TypeScript + Tailwind CSS + shadcn/ui
+Un solo framework para web app + kiosko + portal empleado. Muy documentado, Claude Code lo maneja muy bien.
+Backend
+API Routes / Server Actions de Next.js (monolito modular)
+Evita microservicios prematuros. Un solo repo, un solo despliegue.
+Base de datos
+PostgreSQL administrado vía Supabase
+Incluye Auth, Row Level Security (ideal para multi-empresa), Storage y funciones.
+Autenticación
+Supabase Auth (admins/RH) + flujos propios de PIN/QR/biometría (empleados)
+Separa el login administrativo del check-in de empleados.
+Biometría facial
+Cámara (navegador/celular) + extracción de plantilla facial (face-api.js o API cloud tipo AWS Rekognition/Azure Face)
+Solo se guarda la plantilla cifrada, nunca la foto en crudo de forma permanente.
+Huella digital
+WebAuthn (sensor del propio dispositivo) + soporte opcional a lectores USB dedicados
+El dato biométrico crudo nunca sale del dispositivo del empleado.
+Hardware dedicado (opcional)
+Agente local que integra checadores tipo ZKTeco/Suprema vía su SDK
+Permite un plan premium con terminal física sin reescribir el resto del sistema.
+Hosting/Infra
+Vercel (frontend/API) + Supabase (datos)
+Cero administración de servidores, ideal para lanzar rápido; migrable a AWS/Azure más adelante.
+Reportes
+Generación de PDF/Excel/CSV/SQL alineados a los formatos que publique la STPS
+Módulo independiente y configurable porque el formato oficial aún no está definido por completo.
+3.2 Sobre el hosting
+Para lanzar (MVP y primeros clientes): Vercel + Supabase. Bajo costo, cero mantenimiento de servidores, permite validar el modelo de negocio en semanas.
+Si el negocio crece: Migrar a AWS RDS o Supabase autoalojado si se requieren garantías contractuales de residencia de datos más estrictas para clientes grandes.
+4. Arquitectura del sistema
+Arquitectura de alto nivel (monolito modular, multi-tenant por fila con Row Level Security):
+Cliente web (admin/RH) — Next.js — gestiona empresas, empleados, reportes y nómina.
+Cliente kiosko (check-in) — misma app Next.js en modo pantalla completa — captura biometría/QR/PIN.
+Portal/app del empleado (opcional, fase posterior) — ver su historial, checar desde su celular.
+API central (Next.js API routes / Server Actions) — valida, cifra y guarda eventos de asistencia e incidencias.
+Base de datos PostgreSQL (Supabase) — un solo esquema, todas las tablas con empresa_id + Row Level Security por tenant.
+Servicio de cifrado / KMS — cifra CURP, RFC, fecha de nacimiento, salarios y plantillas biométricas antes de guardarlas.
+Agente local opcional — en sitios con hardware biométrico dedicado, traduce eventos del lector a la API vía HTTPS.
+Todas las llamadas viajan por HTTPS (TLS 1.3). El acceso a la base de datos siempre pasa por la capa de API — nunca se expone la base directamente al cliente.
+5. Métodos de registro de asistencia
+Método
+Cómo funciona
+Consideración clave
+Biometría facial
+Captura por cámara → extracción de plantilla facial → comparación contra la plantilla cifrada del empleado
+No requiere hardware adicional; funciona en cualquier laptop/tablet con cámara.
+Huella digital
+WebAuthn con el sensor propio del dispositivo, o lector USB dedicado vía agente local
+WebAuthn: el dato crudo nunca sale del dispositivo.
+Número de acceso (PIN)
+El empleado ingresa un PIN asignado en el kiosko
+El método más barato y rápido de implementar; útil como respaldo.
+Código QR
+QR dinámico y rotativo por empleado
+El QR rotativo evita que una foto del código sea reutilizada por otra persona.
+Cada empresa cliente elige, desde su panel de configuración, qué métodos habilitar según su presupuesto y el hardware disponible en cada sede.
+6. Seguridad y cifrado
+Minimización: nunca se guarda la imagen facial ni la huella cruda de forma permanente — solo la plantilla matemática cifrada.
+Cifrado en tránsito: TLS 1.3 en toda comunicación.
+Cifrado en reposo: AES-256 a nivel de columna para CURP, RFC, fecha de nacimiento, salarios y plantillas biométricas.
+Gestión de llaves vía un KMS (Supabase Vault o AWS KMS) — nunca llaves hardcodeadas.
+Control de acceso basado en roles (RBAC) + Row Level Security por empresa.
+Registro de auditoría de todo acceso a datos sensibles, incluyendo cambios salariales y aprobación de bonos.
+Consentimiento expreso y por escrito antes de enrolar biometría.
+Política de retención y borrado alineada a los derechos ARCO.
+Respaldos cifrados y plan de recuperación ante desastres.
+7. Paleta de colores
+Se presentan dos propuestas. Ambas se construyeron para leerse en un kiosko a distancia y con luz variable, transmitir la seriedad que un producto de nómina/RH necesita, y mantener significado consistente en los colores de estado (verde = éxito, ámbar = advertencia, rojo = error).
+7.1 Propuesta A — "Confianza corporativa" (recomendada)
+Color
+Hex
+Uso recomendado
+Azul marino (primario)
+#1E3A5F
+Encabezados, barra lateral, marca.
+Azul brillante (interactivo)
+#2563EB
+Botones, enlaces, elementos accionables.
+Verde (éxito)
+#16A34A
+Confirmación de check-in, estados positivos.
+Ámbar (advertencia)
+#F59E0B
+Retardos, datos pendientes de revisión.
+Rojo (error)
+#DC2626
+Faltas, fallos de verificación biométrica.
+Gris oscuro (texto)
+#1F2937
+Texto principal.
+Gris medio (texto secundario)
+#6B7280
+Etiquetas, metadatos.
+Justificación: el azul es el color dominante en software empresarial mexicano de nómina, RH y banca — reduce fricción de adopción porque los usuarios ya lo asocian con "sistema serio donde vive información sensible", y ofrece buen contraste tanto en oficina como en kioscos con luz solar directa.
+7.2 Propuesta B — "Tech moderno" (alternativa)
+Color
+Hex
+Uso recomendado
+Índigo (primario)
+#4338CA
+Encabezados, marca.
+Teal (secundario)
+#0D9488
+Acentos, iconografía secundaria.
+Verde (éxito)
+#22C55E
+Confirmación de check-in.
+Ámbar (advertencia)
+#F59E0B
+Retardos.
+Rojo (error)
+#EF4444
+Faltas, errores.
+Gris casi negro (texto)
+#111827
+Texto principal.
+Justificación: busca posicionar el producto como más nuevo y tecnológico para diferenciarse en una demo comercial. El riesgo es que directores de RH más conservadores la perciban como "menos seria" para un sistema legal de nómina — es una decisión de posicionamiento de marca.
+7.3 Colores de estado y recomendación
+Verde/ámbar/rojo deben mantenerse fijos sin importar la paleta de marca elegida, por ser una convención universal de interfaces y kioscos de acceso. Se recomienda la Propuesta A como paleta por defecto; los wireframes de la sección 8 se construyeron con ella.
+8. Propuesta de vistas
+A continuación se presentan las seis vistas principales del producto, cada una con su objetivo, elementos y justificación de las decisiones de estructura.
+8.1 Inicio de sesión / panel administrativo
+
+8.1 Inicio de sesión / panel administrativo
+Objetivo: Autenticar a administradores, RH y supervisores antes de darles acceso a datos personales de empleados.
+Elementos clave:
+Logo de la empresa cliente (marca blanca)
+Campo de correo y contraseña
+Enlace de recuperación de contraseña
+Justificación de diseño:
+Pantalla deliberadamente simple: menos elementos, menor superficie de error humano en el punto de entrada a datos sensibles.
+Se separa por completo del login de empleados en el kiosko: un administrador nunca debe autenticarse en el mismo flujo que un empleado hace check-in.
+8.2 Kiosko de fichaje
+
+8.2 Kiosko de fichaje
+Objetivo: Permitir que un empleado registre su entrada o salida en el menor número de pasos posible.
+Elementos clave:
+Reloj y fecha visibles en todo momento
+Cuatro métodos de registro como botones grandes
+Confirmación visual inmediata del último registro exitoso
+Justificación de diseño:
+Botones grandes en una sola fila: el empleado identifica su método en menos de un segundo, sin menús anidados.
+Un solo paso por pantalla reduce el tiempo de fila en horas pico.
+La confirmación en verde reduce incertidumbre sin exponer datos de otros empleados.
+8.3 Dashboard administrativo / RH
+
+8.3 Dashboard administrativo / RH
+Objetivo: Dar a RH una vista de estado del día en menos de tres segundos, con acceso rápido al detalle.
+Elementos clave:
+Barra lateral de navegación
+Tarjetas resumen: presentes, retardos, faltas, total de empleados
+Tabla de registros recientes con método y hora
+Justificación de diseño:
+Las tarjetas resumen responden la pregunta diaria de RH sin abrir un reporte.
+Los retardos se resaltan en ámbar directamente en la tabla para detección visual de anomalías.
+La navegación lateral fija sigue el patrón estándar de paneles SaaS B2B.
+8.4 Alta de empleado
+
+8.4 Alta de empleado
+Objetivo: Capturar los datos obligatorios del empleado y registrar el consentimiento biométrico sin abrumar al usuario.
+Elementos clave:
+Formulario en 3 pasos: datos personales, puesto y empresa, enrolamiento biométrico
+Casilla explícita de consentimiento con versión de aviso de privacidad y fecha
+Enrolamiento biométrico como paso final y opcional
+Justificación de diseño:
+Dividir en pasos reduce el abandono y el error en campos delicados como CURP y RFC.
+El consentimiento biométrico se muestra como paso explícito y auditable, alineado a la LFPDPPP.
+El enrolamiento biométrico va al final porque depende del método que la empresa haya habilitado.
+8.5 Reportes de asistencia
+
+8.5 Reportes de asistencia
+Objetivo: Permitir a RH generar y exportar el registro de asistencia en el formato que exigirá la STPS.
+Elementos clave:
+Filtros de periodo y empresa/sucursal
+Botón de exportación a PDF/Excel
+Tabla con días trabajados, retardos, faltas y horas totales
+Justificación de diseño:
+El botón de exportar es la acción más frecuente en esta vista, por eso está siempre visible.
+La tabla se diseñó para añadir columnas sin rediseñar, ya que el formato STPS aún no está publicado en su totalidad.
+8.6 Proyección de nómina / incidencias
+
+8.6 Proyección de nómina / incidencias
+Objetivo: Que RH revise el cálculo de incidencias (horas, descuentos, bonos) antes de exportarlo — nunca se exporta ni se paga nada de forma automática.
+Elementos clave:
+Filtros de periodo y empresa
+Tabla con salario/hora, horas trabajadas, horas extra, retardos, faltas, descuento, bonos y total proyectado
+Botones de exportación a Excel, CSV y SQL
+Justificación de diseño:
+Es una vista de revisión, no de pago automático: siempre hay una persona que la valida antes de exportar.
+Los tres formatos de exportación cubren tres necesidades distintas: Excel para revisión humana, CSV para importar a un sistema de nómina existente, SQL para integraciones directas.
+9. Diagrama de flujo de datos
+El diagrama muestra el recorrido completo de un dato desde que el empleado se presenta frente al punto de captura hasta que queda disponible en reportes, incluyendo verificación de consentimiento y registro de auditoría.
+
+Diagrama de flujo de datos del registro de asistencia
+Empleado → Punto de captura: kiosko, celular o lector físico dedicado, según el método habilitado.
+Procesamiento local: si el método es biométrico, el dispositivo extrae una plantilla matemática, nunca una fotografía o huella en crudo; con WebAuthn el dato ni siquiera sale del dispositivo.
+Antes de procesar, se verifica un consentimiento vigente en la tabla consentimientos; si no existe, el registro se rechaza.
+Transmisión cifrada por TLS 1.3, incluyendo la comunicación con lectores físicos dedicados.
+API central: valida identidad, rol y consentimiento; es el único componente autorizado a escribir en la base de datos.
+Cada acceso a datos sensibles queda escrito en la tabla auditoria, de forma independiente al flujo principal.
+Base de datos: el dato queda cifrado en reposo (AES-256) y aislado por empresa vía Row Level Security antes de estar disponible en dashboard o reportes.
+10. Modelo de base de datos
+10.1 Entidades principales
+
+Modelo entidad-relación del núcleo de asistencia
+Entidad
+Campos clave
+Notas
+empresas (tenant)
+id, nombre, rfc_empresa, plan, config_metodos_habilitados
+Una fila por empresa cliente.
+empleados
+id, empresa_id, nombre, puesto, curp*, rfc*, fecha_nacimiento*, sexo, estatus
+Campos con * van cifrados a nivel de columna.
+credenciales_biometricas
+id, empleado_id, tipo, plantilla_cifrada, vigente
+Nunca se guarda la imagen/huella cruda.
+metodos_acceso
+id, empleado_id, tipo (pin/qr), valor_hash_o_token
+PIN con hash; QR con token rotativo.
+registros_asistencia
+id, empleado_id, empresa_id, metodo, fecha, hora, dispositivo_id
+Tabla de mayor volumen.
+dispositivos
+id, empresa_id, tipo, ubicacion, api_key
+Identifica el origen de cada marcación.
+usuarios_admin
+id, empresa_id, rol (SuperAdmin/AdminEmpresa/RH/Supervisor)
+Roles con permisos distintos vía RLS.
+consentimientos
+id, empleado_id, tipo_dato, version_aviso_privacidad, fecha, ip
+Evidencia legal del consentimiento.
+auditoria
+id, usuario_admin_id, accion, entidad_afectada, fecha
+Trazabilidad de accesos.
+10.2 Extensión: incidencias y nómina
+
+Nuevas tablas y su relación con empleados y empresas
+Tabla
+Campos clave
+Nota
+salarios
+id, empleado_id (FK), tipo (hora/dia), monto, vigente_desde, vigente_hasta
+Histórico, nunca se sobrescribe.
+configuracion_nomina
+id, empresa_id (FK), tope_descuento_pct, minutos_tolerancia, retardos_antes_de_falta, faltas_alerta_30d
+Una fila por empresa; valida contra los topes legales.
+bonos
+id, empresa_id (FK), nombre, tipo, monto_o_pct, condicion, requiere_aprobacion
+Catálogo de bonos configurables.
+incidencias
+id, empleado_id, empresa_id (FK), periodo, horas_trabajadas, horas_extra_dobles/triples, retardos, faltas, descuento_calculado, bonos_aplicados, total_proyectado
+Agregado por empleado y periodo; alimenta la exportación.
+Justificación de las decisiones de modelado más relevantes: empresas es la raíz porque todo el sistema es multi-tenant, así que cada tabla de negocio lleva referencia a empresa_id para poder aplicar Row Level Security de forma consistente. credenciales_biometricas se aísla de empleados para que una consulta rutinaria de RH nunca pase innecesariamente cerca de datos sensibles. salarios es histórico (nunca se sobrescribe) porque, ante una auditoría, el sistema debe poder reconstruir cuánto ganaba un empleado en cualquier fecha pasada, no solo reflejar el salario actual.
+11. Módulo de incidencias y proyección de nómina
+11.1 Alcance de este módulo (y por qué se acotó así)
+Existe una diferencia importante entre calcular incidencias (horas, retardos, faltas, el descuento que corresponde, los bonos aplicables) y operar una nómina completa (calcular ISR, cuotas IMSS, y emitir el recibo de nómina timbrado ante el SAT). Lo segundo requiere certificarse e integrarse con un PAC (Proveedor Autorizado de Certificación) autorizado por el SAT y asumir responsabilidad legal por cada recibo emitido — es, en la práctica, un producto del tamaño de Aspel NOI, CONTPAQi o Runa.
+Este módulo se construye como el primero: calcula y proyecta, no timbra ni paga. Entrega un reporte de incidencias listo para que el sistema de nómina que ya usa cada empresa cliente (o su contador) lo tome como insumo. Esto cubre la mayor parte del valor — automatizar el cálculo manual que hoy hace RH en Excel — sin asumir el riesgo legal y el costo de certificación de una nómina completa. Timbrado de CFDI puede añadirse más adelante como un producto adyacente si el negocio lo justifica.
+11.2 Configuración por empresa
+Cada empresa cliente ajusta su política dentro del margen que deja la ley (sección 2.3), vía la tabla configuracion_nomina:
+tope_descuento_pct: la empresa puede fijar un tope propio igual o menor al 30% legal (nunca mayor).
+minutos_tolerancia y retardos_antes_de_falta: cuántos retardos acumulados equivalen a una falta, según su reglamento interior.
+faltas_alerta_30d: umbral para la alerta de riesgo de rescisión (por defecto 3, alineado a la LFT).
+aplica_prima_dominical: activa el 25% adicional cuando el empleado labora su día de descanso semanal.
+Los bonos siguen la misma lógica: montos fijos, porcentajes sobre el salario, o condicionados, con la opción requiere_aprobacion para que un rol autorizado los confirme antes de aplicarse — queda registrado en auditoria quién aprobó qué.
+11.3 Exportación (Excel / CSV / SQL)
+Excel: Reporte legible para RH, con el desglose completo por empleado, útil para revisión y archivo interno.
+CSV: Formato plano para importarse directamente en software de nómina ya instalado (Aspel NOI, CONTPAQi, u otros que acepten CSV).
+SQL: Script de sentencias INSERT sobre la tabla incidencias del periodo, para integraciones directas o para que el equipo de sistemas de un cliente grande lo cargue a su propio almacén de datos.
+11.4 Funciones adicionales sugeridas
+Histórico de cambios salariales visible en auditoría, defendible ante una inspección de la STPS o del IMSS.
+Cálculo automático de horas extra a partir del check-in/check-out real, en vez de captura manual.
+Alertas de cumplimiento cuando un descuento calculado se acerca al tope legal, además del umbral de faltas.
+Plantillas de exportación específicas por software de nómina popular en México, en vez de un solo CSV genérico.
+Rol de "solo lectura para contador": acceso externo de solo exportación, sin poder editar horas, salarios ni bonos.
+Simulador de escenario: probar "¿qué pasaría si apruebo este bono?" antes de confirmarlo.
+12. Estructura del proyecto (para desarrollo con Claude Code)
+Monorepo simple con Next.js App Router. Esta estructura también vive en el archivo ARCHITECTURE.md en la raíz del repositorio, para que Claude Code la use como contexto permanente.
+registro-asistencia/
+├── app/
+│   ├── (admin)/            → dashboard, empleados, reportes, nómina, configuración
+│   ├── (kiosko)/           → pantalla de fichaje (facial/huella/QR/PIN)
+│   ├── (empleado)/         → portal del empleado (fase posterior)
+│   ├── api/                → API routes (asistencia, empleados, nomina, auth, webhooks)
+│   └── layout.tsx
+├── components/             → componentes UI reutilizables (shadcn/ui)
+├── lib/
+│   ├── db/                 → cliente Supabase, queries
+│   ├── crypto/             → cifrado/descifrado de campos sensibles
+│   ├── biometria/          → lógica de plantillas faciales/huella
+│   ├── nomina/             → motor de cálculo de incidencias y exportación
+│   └── auth/               → sesiones admin y validación de kiosko
+├── supabase/
+│   ├── migrations/         → esquema SQL versionado
+│   └── policies/           → Row Level Security por tabla
+├── agente-local/           → (opcional) servicio Node/Python para lectores físicos
+├── docs/                   → este documento + decisiones técnicas
+└── tests/
+13. Hoja de ruta de desarrollo
+Fase
+Alcance
+Resultado
+0 — Cimientos
+Repo, proyecto Supabase, esquema inicial, Next.js configurado, autenticación admin
+Proyecto listo para construir funcionalidad
+1 — MVP
+Alta de empresa/empleados, check-in por PIN y QR, dashboard básico, exportación simple
+Producto vendible mínimo, el más rápido de lograr
+2 — Biometría facial
+Enrolamiento y verificación facial vía cámara, cifrado de plantillas
+Diferenciador competitivo
+3 — Huella + hardware
+WebAuthn para huella + integración con agente local para lectores físicos
+Cobertura completa de los 4 métodos
+4 — Cumplimiento STPS
+Reportes en el formato que publique la STPS, alertas de jornada, auditoría completa
+Listo para el requisito legal de 2027
+5 — Escalamiento
+Planes de suscripción, facturación, panel white-label, hardening multi-tenant
+Producto listo para vender a mayor escala
+6 — Incidencias y nómina
+Salarios, descuentos dentro del tope legal, bonos configurables, exportación Excel/CSV/SQL
+Automatiza el cálculo manual que hoy hace RH en Excel
+La Fase 6 puede adelantarse si un cliente lo pide como diferenciador, pero depende de que las Fases 1-3 (check-in confiable) ya estén sólidas: un cálculo de incidencias es tan bueno como los datos de asistencia de los que parte.
+14. Notas finales y próximos pasos
+Validar el aviso de privacidad, el flujo de consentimiento biométrico y el reglamento interior de trabajo con un abogado especializado antes de comercializar el producto.
+Crear el proyecto en Supabase y el repositorio con la estructura de la sección 12; copiar ARCHITECTURE.md a la raíz para que Claude Code lo use como referencia permanente.
+Empezar por la Fase 1 (MVP): es la que permite mostrar el producto a los primeros clientes potenciales más rápido.
+Dar seguimiento a las publicaciones oficiales de la STPS durante el segundo semestre de 2026 para ajustar el módulo de reportes al formato final.
+Estos wireframes son de baja fidelidad a propósito: sirven para acordar estructura de información. El siguiente paso natural es convertirlos en componentes reales de shadcn/ui usando la paleta recomendada (sección 7).
+Cualquier ajuste a la paleta o a las vistas conviene decidirlo antes de escribir el primer componente de UI, ya que shadcn/ui centraliza los colores en variables de tema.
