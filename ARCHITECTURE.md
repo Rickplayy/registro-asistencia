@@ -28,11 +28,13 @@ registro-asistencia/
 │   └── api/                → API routes (asistencia, empleados, nomina, auth)
 ├── components/             → componentes UI reutilizables (shadcn/ui)
 ├── lib/
-│   ├── db/                 → clientes Supabase (client/server/admin)
+│   ├── db/                 → clientes Supabase (client/server/admin) + auditoría
 │   ├── crypto/             → cifrado AES-256-GCM de campos sensibles
+│   ├── auth/               → sesión admin, onboarding, PIN (hash) y QR (TOTP)
+│   ├── asistencia/         → check-in del kiosko, métricas, reportes, export
+│   ├── empleados/          → actions de empleados, dispositivos y empresa
 │   ├── biometria/          → plantillas faciales/huella (Fases 2-3)
-│   ├── nomina/             → motor de incidencias y exportación (Fase 6)
-│   └── auth/               → sesión admin y validación de kiosko
+│   └── nomina/             → motor de incidencias y exportación (Fase 6)
 ├── supabase/
 │   ├── migrations/         → esquema SQL versionado (fuente de verdad)
 │   └── policies/           → documentación RLS por tabla
@@ -75,8 +77,26 @@ registro-asistencia/
 - Altas de empresas y de usuarios admin: solo vía backend (service_role),
   para impedir auto-escalamiento de privilegios.
 
+## Decisiones clave de la Fase 1
+
+- **PIN**: 6 dígitos, HMAC-SHA256 determinista con llave HKDF derivada de
+  `ENCRYPTION_KEY`, amarrado a la empresa. Nunca en claro; búsqueda por hash.
+- **QR rotativo**: secreto por empleado (cifrado AES-GCM) + TOTP de 8 dígitos
+  con paso de 30 s y ventana ±1. Payload `RA1.<metodo_id>.<código>`. Una foto
+  del código expira sola.
+- **Kiosko**: se vincula con una clave de dispositivo (solo se guarda su hash
+  SHA-256) en cookie httpOnly. El check-in usa service_role pero SIEMPRE
+  acotado a la empresa del dispositivo; alterna entrada/salida y trae
+  antirrebote de 1 minuto.
+- **Retardos/faltas (MVP)**: contra `empresas.hora_entrada` + tolerancia;
+  falta = día hábil (L-V) sin entrada. Se refina en Fases 4/6.
+- **Consentimiento**: toda alta de empleado inserta en `consentimientos`
+  (datos_personales, versión de aviso, IP). Sin la casilla marcada no se crea.
+- **Auditoría activa**: alta/edición/baja de empleado, lectura de datos
+  sensibles descifrados, regeneración de PIN, cambios de empresa/dispositivos.
+
 ## Hoja de ruta
 
-Fase 0 (esta) → 1 MVP (PIN/QR + dashboard + export) → 2 Facial → 3 Huella +
+Fase 0 ✔ → 1 MVP ✔ (PIN/QR + dashboard + export) → 2 Facial → 3 Huella +
 hardware → 4 Reportes STPS → 5 Escalamiento → 6 Incidencias/nómina
 (proyección; **nunca** timbrado CFDI).

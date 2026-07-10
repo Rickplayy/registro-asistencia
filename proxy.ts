@@ -6,7 +6,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const RUTAS_PUBLICAS = ["/login", "/kiosko", "/api/health"];
+const RUTAS_PUBLICAS = ["/login", "/registro", "/kiosko", "/api/health", "/api/kiosko"];
 
 export default async function proxy(request: NextRequest) {
   if (

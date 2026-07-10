@@ -15,6 +15,15 @@ Supabase (Auth + RLS + Storage) · Vercel + Supabase (MVP).
 
 ## Estado
 
-**Fase 0 — Cimientos**: estructura del repo, esquema inicial con Row Level
-Security en todas las tablas, login de administrador, módulo de cifrado
-AES-256-GCM y prueba de aislamiento multi-tenant (`npm run test:rls`).
+- **Fase 0 — Cimientos** ✔: estructura del repo, esquema inicial con Row
+  Level Security en todas las tablas, login de administrador, módulo de
+  cifrado AES-256-GCM y prueba de aislamiento multi-tenant (`npm run test:rls`).
+- **Fase 1 — MVP** ✔: onboarding de empresa, CRUD de empleados con
+  consentimiento y cifrado, kiosko con PIN (hash) y QR rotativo (TOTP 30 s),
+  dashboard con tarjetas y registros recientes, reportes con exportación
+  Excel/CSV, auditoría activa. Ver el flujo de prueba en
+  [docs/SETUP.md](./docs/SETUP.md).
+
+> Pendiente para activar en producción: conectar credenciales de Supabase en
+> `.env.local`, aplicar migraciones (`npm run db:push`) y correr
+> `npm run test:rls`.

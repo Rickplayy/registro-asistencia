@@ -96,3 +96,17 @@ y limpia todo al final. **Debe pasar antes de avanzar a la Fase 1.**
 | `npm run format` | Prettier sobre app/components/lib/tests |
 | `npm run build` | Build de producción |
 | `npm run generate:key` | Nueva llave AES-256 en base64 |
+
+## Probar el flujo completo de la Fase 1 (MVP)
+
+1. **Crear empresa**: abre `/registro`, llena los datos → entras al dashboard.
+2. **Alta de empleado**: Empleados → "+ Alta de empleado" (2 pasos, con la
+   casilla de consentimiento). Al guardar se muestra su **PIN una sola vez**.
+3. **Crear kiosko**: Dispositivos → "+ Nuevo kiosko" → copia la clave.
+4. **Vincular kiosko**: abre `/kiosko` (idealmente en otro navegador o
+   ventana privada), pega la clave.
+5. **Check-in**: en el kiosko elige PIN y teclea el del empleado → banner
+   verde con nombre y hora. Para QR: en la ficha del empleado pulsa "Mostrar
+   QR vigente" y escanéalo/tecléalo en el kiosko (rota cada 30 s).
+6. **Dashboard**: la marcación aparece en tarjetas y registros recientes.
+7. **Exportar**: Reportes → "Exportar Excel" o "Exportar CSV".

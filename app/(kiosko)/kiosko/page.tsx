@@ -1,23 +1,36 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
+
+import { validarDispositivo } from "@/lib/asistencia/checkin";
+import { KioskoCheckin } from "./kiosko-checkin";
+import { KioskoVincular } from "./kiosko-vincular";
 
 export const metadata: Metadata = {
   title: "Kiosko · Registro de Asistencia",
 };
 
+// La vinculación depende de la cookie del aparato: siempre dinámico.
+export const dynamic = "force-dynamic";
+
 /**
- * Vista 8.2 — Kiosko de fichaje (placeholder de Fase 0).
- * El check-in por PIN y QR se implementa en la Fase 1; facial y huella en
- * las Fases 2 y 3. Este flujo NUNCA comparte sesión con el panel admin.
+ * Vista 8.2 — Kiosko de fichaje.
+ * Reloj visible, botones grandes por método y confirmación inmediata.
+ * PIN y QR activos en Fase 1; facial y huella se habilitan en Fases 2-3.
  */
-export default function KioskoPage() {
+export default async function KioskoPage() {
+  const cookieStore = await cookies();
+  const clave = cookieStore.get("ra_kiosko")?.value ?? "";
+  const dispositivo = clave ? await validarDispositivo(clave) : null;
+
+  if (!dispositivo) {
+    return <KioskoVincular />;
+  }
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-brand px-4 text-brand-foreground">
-      <p className="text-lg opacity-80">Kiosko de fichaje</p>
-      <h1 className="mt-2 text-3xl font-semibold">Disponible en la Fase 1</h1>
-      <p className="mt-4 max-w-md text-center text-sm opacity-70">
-        Aquí vivirá el check-in por PIN, QR, biometría facial y huella, con
-        botones grandes y confirmación inmediata.
-      </p>
-    </main>
+    <KioskoCheckin
+      empresaNombre={dispositivo.empresaNombre}
+      dispositivoNombre={dispositivo.nombre ?? "Kiosko"}
+      metodosHabilitados={dispositivo.metodosHabilitados}
+    />
   );
 }

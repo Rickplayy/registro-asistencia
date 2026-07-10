@@ -69,6 +69,15 @@ export function LoginForm({ mensajeInicial }: { mensajeInicial?: string }) {
               ¿Olvidaste tu contraseña?
             </Link>
           </p>
+          <p className="text-center text-sm text-muted-foreground">
+            ¿Primera vez?{" "}
+            <Link
+              href="/registro"
+              className="text-primary underline-offset-4 hover:underline"
+            >
+              Registra tu empresa
+            </Link>
+          </p>
         </form>
       </CardContent>
     </Card>
