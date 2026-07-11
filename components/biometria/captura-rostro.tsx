@@ -46,10 +46,15 @@ function cargarFaceApi(): Promise<FaceApi> {
     // para detectar soporte SIMD; el binario .wasm no existe en el paquete npm,
     // así que esa sola petición 404 en consola es inevitable con esta librería
     // y no afecta la captura (ver tests/ y verificación manual).
+    //
+    // IMPORTANTE: tf.setBackend() NUNCA lanza si el backend falla — resuelve a
+    // `false` (a diferencia de lo que sugiere un try/catch ingenuo). Y si se
+    // deja "seteado" un backend cuyo init en realidad falló, tf.ready() vuelve
+    // a intentar inicializarlo y ESE SÍ lanza. Por eso hay que revisar el
+    // booleano y, si falla, pasar a cpu ANTES de llamar a ready().
     const tf = faceapi.tf as unknown as TfBackendControl;
-    try {
-      await tf.setBackend("webgl");
-    } catch {
+    const webglOk = await tf.setBackend("webgl").catch(() => false);
+    if (!webglOk) {
       await tf.setBackend("cpu");
     }
     await tf.ready();

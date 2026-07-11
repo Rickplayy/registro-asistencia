@@ -75,7 +75,11 @@ export default async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Todo excepto estáticos e imágenes
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // Todo excepto estáticos, imágenes y los modelos de face-api
+    // (public/modelos-face): el kiosko los pide SIN sesión (es un dispositivo,
+    // no un admin), así que nunca deben pasar por el chequeo de auth — de lo
+    // contrario el navegador recibe la redirección a /login como si fuera el
+    // JSON del modelo y face-api truena al parsearla.
+    "/((?!_next/static|_next/image|favicon.ico|modelos-face/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
