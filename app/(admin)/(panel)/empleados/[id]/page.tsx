@@ -46,8 +46,29 @@ export default async function EmpleadoDetallePage({
     });
   }
 
+  // Estado biométrico (solo metadatos, jamás la plantilla). Todo acceso a
+  // credenciales_biometricas queda en auditoría, sin excepción (Fase 2).
+  const { data: credencialFacial } = await supabase
+    .from("credenciales_biometricas")
+    .select("id, created_at")
+    .eq("empleado_id", empleado.id)
+    .eq("tipo", "facial")
+    .eq("vigente", true)
+    .maybeSingle();
+  if (perfil.empresa_id) {
+    await auditar(supabase, {
+      usuarioAdminId: perfil.id,
+      empresaId: perfil.empresa_id,
+      accion: "biometria.lectura_credenciales",
+      entidad: "credenciales_biometricas",
+      entidadId: empleado.id,
+      detalles: { alcance: "metadatos", contexto: "ficha_empleado" },
+    });
+  }
+
   return (
     <FichaEmpleado
+      rostroEnroladoDesde={credencialFacial?.created_at ?? null}
       empleado={{
         id: empleado.id,
         nombre: empleado.nombre,

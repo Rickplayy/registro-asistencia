@@ -137,7 +137,7 @@ export function ConfiguracionForm({
         <CardHeader>
           <CardTitle>Métodos de registro habilitados</CardTitle>
           <CardDescription>
-            Facial y huella se habilitarán en las Fases 2 y 3.
+            La huella digital se habilitará en la Fase 3.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -157,8 +157,18 @@ export function ConfiguracionForm({
             />
             Código QR rotativo
           </label>
-          <label className="flex items-center gap-3 text-sm opacity-50">
-            <Checkbox disabled /> Biometría facial (Fase 2)
+          <label className="flex items-center gap-3 text-sm">
+            <Checkbox
+              name="metodo_facial"
+              defaultChecked={empresa.metodos.includes("facial")}
+              disabled={!puedeEditar}
+            />
+            <span>
+              Biometría facial{" "}
+              <span className="text-muted-foreground">
+                (requiere consentimiento biométrico por empleado)
+              </span>
+            </span>
           </label>
           <label className="flex items-center gap-3 text-sm opacity-50">
             <Checkbox disabled /> Huella digital (Fase 3)

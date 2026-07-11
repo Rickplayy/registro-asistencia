@@ -12,6 +12,11 @@ import { createAdminClient } from "@/lib/db/admin";
 import { hashPin } from "@/lib/auth/pin";
 import { parsearPayloadQr, verificarCodigoQr } from "@/lib/auth/qr";
 import { decryptField } from "@/lib/crypto";
+import {
+  deserializarPlantilla,
+  esDescriptorValido,
+  mejorCoincidencia,
+} from "@/lib/biometria/plantilla";
 import { fechaMx, horaMx } from "@/lib/asistencia/fechas";
 
 /** Minutos mínimos entre dos marcaciones del mismo empleado (anti doble-clic). */
@@ -117,10 +122,98 @@ async function buscarPorQr(
   return { empleadoId: data.empleado_id, empleadoNombre: emp.nombre };
 }
 
+/**
+ * Verificación facial 1:N. El kiosko manda SOLO el descriptor (128 números)
+ * extraído en el navegador; aquí se compara contra las plantillas cifradas de
+ * los empleados con consentimiento biométrico vigente (secciones 6 y 9).
+ * La lectura de credenciales_biometricas queda auditada, sin excepción.
+ */
+async function buscarPorRostro(
+  dispositivo: DispositivoVinculado,
+  valorJson: string,
+): Promise<EmpleadoMetodo | null> {
+  let capturado: unknown;
+  try {
+    capturado = JSON.parse(valorJson);
+  } catch {
+    return null;
+  }
+  // Barrera anti-imagen: si no es un descriptor de 128 números, se descarta.
+  if (!esDescriptorValido(capturado)) return null;
+
+  const admin = createAdminClient();
+
+  // Solo se procesan plantillas de empleados con consentimiento vigente.
+  const { data: consentimientos } = await admin
+    .from("consentimientos")
+    .select("empleado_id")
+    .eq("empresa_id", dispositivo.empresaId)
+    .eq("tipo_dato", "biometrico_facial")
+    .eq("otorgado", true)
+    .is("revocado_en", null);
+  const conConsentimiento = new Set(
+    (consentimientos ?? []).map((c) => c.empleado_id),
+  );
+
+  const { data: credenciales } = await admin
+    .from("credenciales_biometricas")
+    .select("empleado_id, plantilla_cifrada, empleados(nombre, estatus)")
+    .eq("empresa_id", dispositivo.empresaId)
+    .eq("tipo", "facial")
+    .eq("vigente", true);
+
+  const candidatos: {
+    empleadoId: string;
+    nombre: string;
+    plantilla: number[];
+  }[] = [];
+  for (const c of credenciales ?? []) {
+    const emp = c.empleados as unknown as { nombre: string; estatus: string };
+    if (emp?.estatus !== "activo") continue;
+    if (!conConsentimiento.has(c.empleado_id)) continue;
+    try {
+      candidatos.push({
+        empleadoId: c.empleado_id,
+        nombre: emp.nombre,
+        plantilla: deserializarPlantilla(decryptField(c.plantilla_cifrada)),
+      });
+    } catch {
+      // Plantilla ilegible (llave rotada / payload alterado): se ignora.
+    }
+  }
+
+  const resultado = mejorCoincidencia(
+    capturado,
+    candidatos.map((c) => c.plantilla),
+  );
+  const coincidencia =
+    resultado.indice >= 0 ? candidatos[resultado.indice] : null;
+
+  // Auditoría de la lectura (usuario_admin_id null: el actor es el kiosko).
+  await admin.from("auditoria").insert({
+    usuario_admin_id: null,
+    empresa_id: dispositivo.empresaId,
+    accion: "biometria.verificacion_checkin",
+    entidad_afectada: "credenciales_biometricas",
+    entidad_id: coincidencia?.empleadoId ?? null,
+    detalles: {
+      dispositivo_id: dispositivo.id,
+      plantillas_comparadas: candidatos.length,
+      coincidencia: Boolean(coincidencia),
+    },
+  });
+
+  if (!coincidencia) return null;
+  return {
+    empleadoId: coincidencia.empleadoId,
+    empleadoNombre: coincidencia.nombre,
+  };
+}
+
 /** Registra una marcación de entrada/salida para un kiosko ya validado. */
 export async function registrarCheckin(
   dispositivo: DispositivoVinculado,
-  metodo: "pin" | "qr",
+  metodo: "pin" | "qr" | "facial",
   valor: string,
 ): Promise<ResultadoCheckin> {
   if (!dispositivo.metodosHabilitados.includes(metodo)) {
@@ -133,11 +226,19 @@ export async function registrarCheckin(
   const encontrado =
     metodo === "pin"
       ? await buscarPorPin(dispositivo.empresaId, valor)
-      : await buscarPorQr(dispositivo.empresaId, valor);
+      : metodo === "qr"
+        ? await buscarPorQr(dispositivo.empresaId, valor)
+        : await buscarPorRostro(dispositivo, valor);
 
   if (!encontrado) {
-    // Mensaje único: no revelar si el PIN existe, expiró el QR, etc.
-    return { ok: false, error: "Código no reconocido. Intenta de nuevo." };
+    // Mensaje único por método: no revelar si el PIN existe, expiró el QR, etc.
+    return {
+      ok: false,
+      error:
+        metodo === "facial"
+          ? "Rostro no reconocido. Intenta de nuevo o usa tu PIN."
+          : "Código no reconocido. Intenta de nuevo.",
+    };
   }
 
   const admin = createAdminClient();

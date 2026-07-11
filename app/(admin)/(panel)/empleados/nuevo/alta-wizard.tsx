@@ -7,6 +7,7 @@ import {
   crearEmpleado,
   type AltaEmpleadoResult,
 } from "@/lib/empleados/actions";
+import { EnrolamientoFacial } from "@/components/biometria/enrolamiento-facial";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,36 +31,54 @@ export function AltaEmpleadoWizard() {
 
   if (state && "ok" in state && state.ok) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-success">Empleado dado de alta</CardTitle>
-          <CardDescription>
-            Su consentimiento quedó registrado y sus métodos de acceso están
-            listos.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert>
-            <AlertTitle>PIN de acceso: {state.pin}</AlertTitle>
-            <AlertDescription>
-              Compártelo con el empleado por un medio seguro. Por seguridad no
-              se vuelve a mostrar: si se pierde, regenera uno nuevo desde su
-              ficha.
-            </AlertDescription>
-          </Alert>
-          <div className="flex gap-3">
-            <Button render={<Link href={`/empleados/${state.empleadoId}`} />}>
-              Ver ficha y QR
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => window.location.assign("/empleados/nuevo")}
-            >
-              Dar de alta otro
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-success">
+              Empleado dado de alta
+            </CardTitle>
+            <CardDescription>
+              Su consentimiento quedó registrado y sus métodos de acceso están
+              listos.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert>
+              <AlertTitle>PIN de acceso: {state.pin}</AlertTitle>
+              <AlertDescription>
+                Compártelo con el empleado por un medio seguro. Por seguridad no
+                se vuelve a mostrar: si se pierde, regenera uno nuevo desde su
+                ficha.
+              </AlertDescription>
+            </Alert>
+            <div className="flex gap-3">
+              <Button render={<Link href={`/empleados/${state.empleadoId}`} />}>
+                Ver ficha y QR
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.location.assign("/empleados/nuevo")}
+              >
+                Dar de alta otro
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Paso 3 de 3 · Enrolamiento facial (opcional)</CardTitle>
+            <CardDescription>
+              Requiere consentimiento expreso específico para datos biométricos
+              (LFPDPPP). Solo se guarda la plantilla matemática cifrada; nunca
+              una fotografía. También puede hacerse después desde su ficha.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <EnrolamientoFacial empleadoId={state.empleadoId} />
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -69,8 +88,8 @@ export function AltaEmpleadoWizard() {
         <CardHeader>
           <CardTitle>
             {paso === 1
-              ? "Paso 1 de 2 · Datos personales"
-              : "Paso 2 de 2 · Puesto y empresa"}
+              ? "Paso 1 de 3 · Datos personales"
+              : "Paso 2 de 3 · Puesto y empresa"}
           </CardTitle>
           <CardDescription>
             {paso === 1
@@ -177,8 +196,9 @@ export function AltaEmpleadoWizard() {
               <Input id="fecha_ingreso" name="fecha_ingreso" type="date" />
             </div>
             <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-              Paso 3 · Enrolamiento biométrico — disponible en la Fase 2. Al
-              guardar se generan automáticamente su PIN y su código QR rotativo.
+              Al guardar se generan automáticamente su PIN y su código QR
+              rotativo, y podrás enrolar su rostro en el paso 3 (opcional, con
+              consentimiento biométrico específico).
             </div>
             <div className="flex justify-between">
               <Button

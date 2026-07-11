@@ -1,6 +1,8 @@
 /**
- * Check-in del kiosko (PIN o QR). El dispositivo se autentica con su cookie
- * de vinculación; el empleado, con su PIN o su QR rotativo.
+ * Check-in del kiosko (PIN, QR o rostro). El dispositivo se autentica con su
+ * cookie de vinculación; el empleado, con su PIN, su QR rotativo o su rostro.
+ * En el método facial el cuerpo trae SOLO el descriptor de 128 números
+ * extraído en el navegador — nunca una imagen.
  */
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Cuerpo inválido" }, { status: 400 });
   }
 
-  if ((metodo !== "pin" && metodo !== "qr") || !valor) {
+  if ((metodo !== "pin" && metodo !== "qr" && metodo !== "facial") || !valor) {
     return NextResponse.json({ error: "Datos incompletos" }, { status: 400 });
   }
 

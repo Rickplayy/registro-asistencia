@@ -16,12 +16,18 @@ export type AccionAuditoria =
   | "empresa.alta"
   | "empresa.actualizacion"
   | "dispositivo.alta"
-  | "dispositivo.desactivacion";
+  | "dispositivo.desactivacion"
+  | "biometria.consentimiento_facial"
+  | "biometria.enrolamiento_facial"
+  | "biometria.revocacion_facial"
+  | "biometria.lectura_credenciales"
+  | "biometria.verificacion_checkin";
 
 export async function auditar(
   supabase: SupabaseClient,
   entrada: {
-    usuarioAdminId: string;
+    /** null cuando el acceso no lo hace un admin (p. ej. verificación del kiosko). */
+    usuarioAdminId: string | null;
     empresaId: string;
     accion: AccionAuditoria;
     entidad: string;

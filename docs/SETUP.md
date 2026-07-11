@@ -67,7 +67,18 @@ insert into public.usuarios_admin (auth_user_id, empresa_id, nombre, email, rol)
 values ('<USER-UID-DE-AUTH>', '<ID-DE-LA-EMPRESA>', 'Tu Nombre', 'tu@correo.com', 'admin_empresa');
 ```
 
-## 6. Correr la aplicación
+## 6. Modelos de reconocimiento facial (Fase 2)
+
+```bash
+npm run models:download   # descarga los modelos de face-api a public/modelos-face
+```
+
+Los modelos se auto-hospedan para que el kiosko no haga ninguna llamada
+externa al procesar rostros. Solo hace falta correrlo una vez (los archivos
+quedan versionados en el repo). Nota: la cámara del navegador requiere
+HTTPS o `localhost`.
+
+## 7. Correr la aplicación
 
 ```bash
 npm run dev
@@ -77,10 +88,10 @@ Abre <http://localhost:3000> → redirige a `/login`. Entra con el usuario del
 paso 5 y verás el dashboard con tu empresa. `/kiosko` muestra el placeholder
 de la Fase 1.
 
-## 7. Pruebas
+## 8. Pruebas
 
 ```bash
-npm run test:unit   # unitarias de lib/crypto (sin base de datos)
+npm run test:unit   # unitarias de lib/crypto y lib/biometria (sin base de datos)
 npm run test:rls    # aislamiento multi-tenant contra tu proyecto Supabase
 ```
 
@@ -110,3 +121,19 @@ y limpia todo al final. **Debe pasar antes de avanzar a la Fase 1.**
    QR vigente" y escanéalo/tecléalo en el kiosko (rota cada 30 s).
 6. **Dashboard**: la marcación aparece en tarjetas y registros recientes.
 7. **Exportar**: Reportes → "Exportar Excel" o "Exportar CSV".
+
+## Probar el flujo de la Fase 2 (biometría facial)
+
+1. **Habilitar el método**: Configuración → marca "Biometría facial" → guardar.
+2. **Enrolar**: en el alta de empleado (paso 3) o en su ficha ("Enrolar
+   rostro"): marca la casilla de **consentimiento biométrico** (sin ella la
+   cámara no se activa y el servidor rechaza el enrolamiento), mira a la
+   cámara y espera las 3 capturas.
+3. **Fichar**: en `/kiosko` pulsa **Rostro** → mirada de frente → banner verde
+   con nombre y hora. Si el rostro no coincide, el kiosko sugiere usar PIN.
+4. **Verificar cumplimiento**:
+   - `select tipo, vigente, left(plantilla_cifrada, 20) from credenciales_biometricas;`
+     → la plantilla empieza con `v1:` (cifrada); no hay ninguna imagen.
+   - `select accion, detalles from auditoria order by fecha desc limit 10;`
+     → aparecen `biometria.enrolamiento_facial`, `biometria.verificacion_checkin`
+     y `biometria.lectura_credenciales`.

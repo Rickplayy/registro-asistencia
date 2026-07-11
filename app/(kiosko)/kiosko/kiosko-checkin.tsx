@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { CapturaRostro } from "@/components/biometria/captura-rostro";
 
 type Metodo = "pin" | "qr" | "facial" | "huella";
 
@@ -21,7 +22,7 @@ const METODOS: {
 }[] = [
   { id: "pin", etiqueta: "PIN", icono: "🔢" },
   { id: "qr", etiqueta: "Código QR", icono: "▦" },
-  { id: "facial", etiqueta: "Rostro", icono: "🙂", faseFutura: "Fase 2" },
+  { id: "facial", etiqueta: "Rostro", icono: "🙂" },
   { id: "huella", etiqueta: "Huella", icono: "👍", faseFutura: "Fase 3" },
 ];
 
@@ -57,14 +58,16 @@ export function KioskoCheckin({
   dispositivoNombre: string;
   metodosHabilitados: string[];
 }) {
-  const [metodoActivo, setMetodoActivo] = useState<"pin" | "qr" | null>(null);
+  const [metodoActivo, setMetodoActivo] = useState<
+    "pin" | "qr" | "facial" | null
+  >(null);
   const [pin, setPin] = useState("");
   const [confirmacion, setConfirmacion] = useState<Confirmacion | null>(null);
   const [enviando, setEnviando] = useState(false);
   const qrInputRef = useRef<HTMLInputElement>(null);
 
   const enviar = useCallback(
-    async (metodo: "pin" | "qr", valor: string) => {
+    async (metodo: "pin" | "qr" | "facial", valor: string) => {
       if (enviando) return;
       setEnviando(true);
       try {
@@ -168,7 +171,8 @@ export function KioskoCheckin({
                   type="button"
                   disabled={!habilitado}
                   onClick={() =>
-                    (m.id === "pin" || m.id === "qr") && setMetodoActivo(m.id)
+                    (m.id === "pin" || m.id === "qr" || m.id === "facial") &&
+                    setMetodoActivo(m.id)
                   }
                   className={cn(
                     "flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border-2 text-xl font-semibold transition-all",
@@ -228,6 +232,27 @@ export function KioskoCheckin({
                 setPin("");
                 setMetodoActivo(null);
               }}
+            >
+              ← Regresar
+            </button>
+          </div>
+        )}
+
+        {/* Reconocimiento facial: el descriptor se extrae aquí, en el kiosko;
+            al servidor solo viajan 128 números, nunca la imagen. */}
+        {metodoActivo === "facial" && (
+          <div className="w-full max-w-md space-y-4">
+            <CapturaRostro
+              capturasObjetivo={1}
+              onCapturas={async (descriptores) => {
+                await enviar("facial", JSON.stringify(descriptores[0]));
+                setMetodoActivo(null);
+              }}
+            />
+            <button
+              type="button"
+              className="w-full text-center text-sm opacity-70 hover:opacity-100"
+              onClick={() => setMetodoActivo(null)}
             >
               ← Regresar
             </button>

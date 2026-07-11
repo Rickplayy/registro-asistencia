@@ -9,6 +9,8 @@ import {
   regenerarPin,
   type AccionEmpleadoResult,
 } from "@/lib/empleados/actions";
+import { revocarRostro } from "@/lib/biometria/enrolamiento";
+import { EnrolamientoFacial } from "@/components/biometria/enrolamiento-facial";
 import { QR_PASO_SEGUNDOS } from "@/lib/auth/qr-constantes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +62,14 @@ function QrRotativo({ empleadoId }: { empleadoId: string }) {
   );
 }
 
-export function FichaEmpleado({ empleado }: { empleado: EmpleadoPlano }) {
+export function FichaEmpleado({
+  empleado,
+  rostroEnroladoDesde,
+}: {
+  empleado: EmpleadoPlano;
+  /** created_at de la credencial facial vigente, o null si no hay. */
+  rostroEnroladoDesde: string | null;
+}) {
   const [state, formAction, pending] = useActionState<
     AccionEmpleadoResult,
     FormData
@@ -70,6 +79,7 @@ export function FichaEmpleado({ empleado }: { empleado: EmpleadoPlano }) {
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [enTransicion, startTransition] = useTransition();
   const [mostrarQr, setMostrarQr] = useState(false);
+  const [mostrarEnrolamiento, setMostrarEnrolamiento] = useState(false);
 
   const esBaja = empleado.estatus === "baja";
 
@@ -266,6 +276,66 @@ export function FichaEmpleado({ empleado }: { empleado: EmpleadoPlano }) {
                 >
                   Mostrar QR vigente
                 </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Rostro (biometría facial)</CardTitle>
+              <CardDescription>
+                Solo se guarda la plantilla matemática cifrada, nunca una
+                fotografía. Requiere consentimiento biométrico expreso; todo
+                acceso queda auditado.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {rostroEnroladoDesde ? (
+                <p className="text-sm">
+                  <Badge className="bg-success text-success-foreground">
+                    Enrolado
+                  </Badge>{" "}
+                  desde el{" "}
+                  {new Date(rostroEnroladoDesde).toLocaleDateString("es-MX")}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Sin rostro enrolado.
+                </p>
+              )}
+              {mostrarEnrolamiento ? (
+                <EnrolamientoFacial
+                  empleadoId={empleado.id}
+                  onEnrolado={() => window.location.reload()}
+                />
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    disabled={esBaja}
+                    onClick={() => setMostrarEnrolamiento(true)}
+                  >
+                    {rostroEnroladoDesde
+                      ? "Re-enrolar rostro"
+                      : "Enrolar rostro"}
+                  </Button>
+                  {rostroEnroladoDesde && (
+                    <Button
+                      variant="destructive"
+                      disabled={enTransicion}
+                      onClick={() =>
+                        startTransition(async () => {
+                          setErrorAccion(null);
+                          const res = await revocarRostro(empleado.id);
+                          if (res.ok) window.location.reload();
+                          else setErrorAccion(res.error);
+                        })
+                      }
+                    >
+                      Revocar
+                    </Button>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
