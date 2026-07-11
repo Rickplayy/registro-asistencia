@@ -20,6 +20,9 @@ import {
 import { cn } from "@/lib/utils";
 
 type FaceApi = typeof import("@vladmandic/face-api");
+// Los .d.ts de @vladmandic/face-api no tipan bien los métodos del `tf` que
+// re-exportan (existen en runtime, confirmado en pruebas manuales).
+type TfBackendControl = { setBackend(name: string): Promise<boolean>; ready(): Promise<void> };
 
 const RUTA_MODELOS = "/modelos-face";
 const INTERVALO_DETECCION_MS = 700;
@@ -31,6 +34,22 @@ let faceApiPromise: Promise<FaceApi> | null = null;
 function cargarFaceApi(): Promise<FaceApi> {
   faceApiPromise ??= (async () => {
     const faceapi = await import("@vladmandic/face-api");
+    // Fuerza el backend a webgl (con reserva a cpu) ANTES de cargar modelos:
+    // el bundle de tfjs incluye un backend wasm cuyo .wasm no lo sirve Next.js
+    // (404), y si dejamos que tfjs decida el backend "automáticamente" intenta
+    // negociarlo y la carga de modelos falla. Fijar el backend explícito evita
+    // esa negociación al elegir backend.
+    // Nota: el bundle de face-api importa el backend wasm de forma incondicional
+    // para detectar soporte SIMD; el binario .wasm no existe en el paquete npm,
+    // así que esa sola petición 404 en consola es inevitable con esta librería
+    // y no afecta la captura (ver tests/ y verificación manual).
+    const tf = faceapi.tf as unknown as TfBackendControl;
+    try {
+      await tf.setBackend("webgl");
+    } catch {
+      await tf.setBackend("cpu");
+    }
+    await tf.ready();
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(RUTA_MODELOS),
       faceapi.nets.faceLandmark68Net.loadFromUri(RUTA_MODELOS),
