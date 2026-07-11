@@ -28,16 +28,20 @@ export async function crearDispositivo(
 
   const nombre = String(formData.get("nombre") ?? "").trim();
   const ubicacion = String(formData.get("ubicacion") ?? "").trim();
+  const tipoCrudo = String(formData.get("tipo") ?? "kiosko");
+  // Fase 3: además de kioskos web, lectores físicos operados por el agente local.
+  const tipo = tipoCrudo === "lector_fisico" ? "lector_fisico" : "kiosko";
   if (!nombre) return { ok: false, error: "Ponle un nombre al dispositivo." };
 
-  const clave = `RA-KIOSKO-${randomBytes(24).toString("hex")}`;
+  const prefijo = tipo === "lector_fisico" ? "RA-LECTOR" : "RA-KIOSKO";
+  const clave = `${prefijo}-${randomBytes(24).toString("hex")}`;
 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("dispositivos")
     .insert({
       empresa_id: perfil.empresa_id,
-      tipo: "kiosko",
+      tipo,
       nombre,
       ubicacion: ubicacion || null,
       api_key_hash: hashApiKey(clave),
@@ -59,7 +63,7 @@ export async function crearDispositivo(
     accion: "dispositivo.alta",
     entidad: "dispositivos",
     entidadId: data.id,
-    detalles: { nombre },
+    detalles: { nombre, tipo },
   });
 
   revalidatePath("/dispositivos");

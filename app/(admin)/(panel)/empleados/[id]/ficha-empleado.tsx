@@ -10,6 +10,10 @@ import {
   type AccionEmpleadoResult,
 } from "@/lib/empleados/actions";
 import { revocarRostro } from "@/lib/biometria/enrolamiento";
+import {
+  registrarConsentimientoHuella,
+  revocarHuella,
+} from "@/lib/biometria/huella";
 import { EnrolamientoFacial } from "@/components/biometria/enrolamiento-facial";
 import { QR_PASO_SEGUNDOS } from "@/lib/auth/qr-constantes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -65,10 +69,16 @@ function QrRotativo({ empleadoId }: { empleadoId: string }) {
 export function FichaEmpleado({
   empleado,
   rostroEnroladoDesde,
+  huellasActivas,
+  consentimientoHuella,
 }: {
   empleado: EmpleadoPlano;
   /** created_at de la credencial facial vigente, o null si no hay. */
   rostroEnroladoDesde: string | null;
+  /** Passkeys WebAuthn vigentes del empleado. */
+  huellasActivas: number;
+  /** ¿Hay consentimiento biometrico_huella vigente? */
+  consentimientoHuella: boolean;
 }) {
   const [state, formAction, pending] = useActionState<
     AccionEmpleadoResult,
@@ -336,6 +346,72 @@ export function FichaEmpleado({
                     </Button>
                   )}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Huella digital (WebAuthn)</CardTitle>
+              <CardDescription>
+                La huella se verifica en el sensor del kiosko y nunca sale de
+                él; el sistema solo guarda una clave pública de verificación. El
+                enrolamiento se hace en el kiosko con el PIN del empleado.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm">
+                Consentimiento:{" "}
+                {consentimientoHuella ? (
+                  <Badge className="bg-success text-success-foreground">
+                    registrado
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">sin registrar</Badge>
+                )}{" "}
+                · Huellas enroladas: <strong>{huellasActivas}</strong>
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {!consentimientoHuella && (
+                  <Button
+                    variant="outline"
+                    disabled={enTransicion || esBaja}
+                    onClick={() =>
+                      startTransition(async () => {
+                        setErrorAccion(null);
+                        const res = await registrarConsentimientoHuella(
+                          empleado.id,
+                        );
+                        if (res.ok) window.location.reload();
+                        else setErrorAccion(res.error);
+                      })
+                    }
+                  >
+                    Registrar consentimiento
+                  </Button>
+                )}
+                {(consentimientoHuella || huellasActivas > 0) && (
+                  <Button
+                    variant="destructive"
+                    disabled={enTransicion}
+                    onClick={() =>
+                      startTransition(async () => {
+                        setErrorAccion(null);
+                        const res = await revocarHuella(empleado.id);
+                        if (res.ok) window.location.reload();
+                        else setErrorAccion(res.error);
+                      })
+                    }
+                  >
+                    Revocar huella y consentimiento
+                  </Button>
+                )}
+              </div>
+              {consentimientoHuella && huellasActivas === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Listo para enrolar: el empleado debe ir al kiosko, elegir
+                  Huella → &quot;Primera vez aquí&quot; y teclear su PIN.
+                </p>
               )}
             </CardContent>
           </Card>

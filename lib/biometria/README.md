@@ -1,6 +1,6 @@
 # lib/biometria
 
-**Fase 2 (activa): reconocimiento facial.** Fase 3 (huella vía WebAuthn) pendiente.
+**Fase 2: reconocimiento facial** y **Fase 3: huella vía WebAuthn** — activas.
 
 ## Cómo funciona el flujo facial
 
@@ -18,6 +18,25 @@
 3. **Check-in en kiosko** (`lib/asistencia/checkin.ts` → `buscarPorRostro`):
    identificación 1:N contra las plantillas descifradas de empleados activos
    **con consentimiento vigente**; umbral estricto (`UMBRAL_DISTANCIA = 0.5`).
+
+## Cómo funciona el flujo de huella (WebAuthn)
+
+1. **El dato biométrico jamás sale del aparato**: la huella la verifica el
+   autenticador del dispositivo (Windows Hello / Touch ID / Android). El
+   servidor solo guarda la **clave pública** del passkey en
+   `credenciales_webauthn` — un dato criptográfico, no biométrico.
+2. **Consentimiento** (`huella.ts`): RH registra el consentimiento
+   `biometrico_huella` desde la ficha; sin él, el enrolamiento y el check-in
+   se rechazan en servidor.
+3. **Enrolamiento EN el kiosko** (`webauthn.ts` + `/api/kiosko/huella/*`): el
+   empleado se identifica con su PIN y crea el passkey en ese aparato
+   (credencial descubrible, `userVerification: required`). El reto viaja en
+   cookie httpOnly cifrada de 5 minutos.
+4. **Check-in**: aserción con `allowCredentials` vacío — el sensor identifica
+   al empleado; el servidor verifica firma, reto, origen, consentimiento y
+   contador de firmas (anticlonación) antes de registrar.
+5. **Hardware dedicado**: los lectores físicos van por `agente-local/` →
+   `/api/agente/checkin` (la terminal verifica la huella; ver su README).
 
 ## Reglas inquebrantables
 

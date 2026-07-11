@@ -38,8 +38,8 @@ export async function actualizarEmpresa(
     return { error: "La tolerancia debe ser un número de 0 a 120 minutos." };
   }
 
-  // Métodos activables: PIN, QR y facial (Fase 2). Huella llega en Fase 3.
-  const metodos = ["pin", "qr", "facial"].filter(
+  // Los 4 métodos de la sección 5 del documento maestro (Fase 3 completa).
+  const metodos = ["pin", "qr", "facial", "huella"].filter(
     (m) => formData.get(`metodo_${m}`) === "on",
   );
   if (metodos.length === 0) {

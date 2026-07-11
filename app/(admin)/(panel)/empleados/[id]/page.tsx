@@ -46,21 +46,41 @@ export default async function EmpleadoDetallePage({
     });
   }
 
-  // Estado biométrico (solo metadatos, jamás la plantilla). Todo acceso a
-  // credenciales_biometricas queda en auditoría, sin excepción (Fase 2).
-  const { data: credencialFacial } = await supabase
-    .from("credenciales_biometricas")
-    .select("id, created_at")
-    .eq("empleado_id", empleado.id)
-    .eq("tipo", "facial")
-    .eq("vigente", true)
-    .maybeSingle();
+  // Estado biométrico (solo metadatos, jamás plantillas ni claves). Todo
+  // acceso a tablas de credenciales queda en auditoría, sin excepción.
+  const [
+    { data: credencialFacial },
+    { count: huellas },
+    { data: consentHuella },
+  ] = await Promise.all([
+    supabase
+      .from("credenciales_biometricas")
+      .select("id, created_at")
+      .eq("empleado_id", empleado.id)
+      .eq("tipo", "facial")
+      .eq("vigente", true)
+      .maybeSingle(),
+    supabase
+      .from("credenciales_webauthn")
+      .select("id", { count: "exact", head: true })
+      .eq("empleado_id", empleado.id)
+      .eq("vigente", true),
+    supabase
+      .from("consentimientos")
+      .select("id")
+      .eq("empleado_id", empleado.id)
+      .eq("tipo_dato", "biometrico_huella")
+      .eq("otorgado", true)
+      .is("revocado_en", null)
+      .limit(1)
+      .maybeSingle(),
+  ]);
   if (perfil.empresa_id) {
     await auditar(supabase, {
       usuarioAdminId: perfil.id,
       empresaId: perfil.empresa_id,
       accion: "biometria.lectura_credenciales",
-      entidad: "credenciales_biometricas",
+      entidad: "credenciales_biometricas+credenciales_webauthn",
       entidadId: empleado.id,
       detalles: { alcance: "metadatos", contexto: "ficha_empleado" },
     });
@@ -69,6 +89,8 @@ export default async function EmpleadoDetallePage({
   return (
     <FichaEmpleado
       rostroEnroladoDesde={credencialFacial?.created_at ?? null}
+      huellasActivas={huellas ?? 0}
+      consentimientoHuella={Boolean(consentHuella)}
       empleado={{
         id: empleado.id,
         nombre: empleado.nombre,

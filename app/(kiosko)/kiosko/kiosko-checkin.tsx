@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { CapturaRostro } from "@/components/biometria/captura-rostro";
+import { HuellaKiosko } from "@/components/biometria/huella-kiosko";
 
 type Metodo = "pin" | "qr" | "facial" | "huella";
 
@@ -23,7 +24,7 @@ const METODOS: {
   { id: "pin", etiqueta: "PIN", icono: "🔢" },
   { id: "qr", etiqueta: "Código QR", icono: "▦" },
   { id: "facial", etiqueta: "Rostro", icono: "🙂" },
-  { id: "huella", etiqueta: "Huella", icono: "👍", faseFutura: "Fase 3" },
+  { id: "huella", etiqueta: "Huella", icono: "👍" },
 ];
 
 function Reloj() {
@@ -58,16 +59,14 @@ export function KioskoCheckin({
   dispositivoNombre: string;
   metodosHabilitados: string[];
 }) {
-  const [metodoActivo, setMetodoActivo] = useState<
-    "pin" | "qr" | "facial" | null
-  >(null);
+  const [metodoActivo, setMetodoActivo] = useState<Metodo | null>(null);
   const [pin, setPin] = useState("");
   const [confirmacion, setConfirmacion] = useState<Confirmacion | null>(null);
   const [enviando, setEnviando] = useState(false);
   const qrInputRef = useRef<HTMLInputElement>(null);
 
   const enviar = useCallback(
-    async (metodo: "pin" | "qr" | "facial", valor: string) => {
+    async (metodo: Metodo, valor: string) => {
       if (enviando) return;
       setEnviando(true);
       try {
@@ -170,10 +169,7 @@ export function KioskoCheckin({
                   key={m.id}
                   type="button"
                   disabled={!habilitado}
-                  onClick={() =>
-                    (m.id === "pin" || m.id === "qr" || m.id === "facial") &&
-                    setMetodoActivo(m.id)
-                  }
+                  onClick={() => setMetodoActivo(m.id)}
                   className={cn(
                     "flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border-2 text-xl font-semibold transition-all",
                     habilitado
@@ -257,6 +253,18 @@ export function KioskoCheckin({
               ← Regresar
             </button>
           </div>
+        )}
+
+        {/* Huella (WebAuthn): el sensor del aparato verifica; al servidor solo
+            viaja la aserción firmada, jamás la huella. */}
+        {metodoActivo === "huella" && (
+          <HuellaKiosko
+            onAsercion={async (asercionJson) => {
+              await enviar("huella", asercionJson);
+              setMetodoActivo(null);
+            }}
+            onCancelar={() => setMetodoActivo(null)}
+          />
         )}
 
         {/* Lector QR (escáner USB teclea el código y termina con Enter) */}

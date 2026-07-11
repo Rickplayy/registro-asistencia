@@ -1,0 +1,14 @@
+{
+  "name": "registro-asistencia-agente-local",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Puente entre lectores de huella físicos (ZKTeco/Suprema) y la API central de Registro de Asistencia",
+  "main": "agente.mjs",
+  "scripts": {
+    "start": "node agente.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

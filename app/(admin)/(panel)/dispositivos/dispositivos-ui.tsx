@@ -28,13 +28,13 @@ export function AltaDispositivo() {
 
   return (
     <Dialog>
-      <DialogTrigger render={<Button />}>+ Nuevo kiosko</DialogTrigger>
+      <DialogTrigger render={<Button />}>+ Nuevo dispositivo</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nuevo dispositivo kiosko</DialogTitle>
+          <DialogTitle>Nuevo dispositivo</DialogTitle>
           <DialogDescription>
-            Al crearlo obtendrás su clave de vinculación — se muestra una sola
-            vez.
+            Kiosko web o lector físico (agente local). Al crearlo obtendrás su
+            clave de vinculación — se muestra una sola vez.
           </DialogDescription>
         </DialogHeader>
 
@@ -60,6 +60,22 @@ export function AltaDispositivo() {
                 <AlertDescription>{state.error}</AlertDescription>
               </Alert>
             )}
+            <div className="space-y-2">
+              <Label htmlFor="disp_tipo">Tipo</Label>
+              <select
+                id="disp_tipo"
+                name="tipo"
+                defaultValue="kiosko"
+                className="border-input bg-background flex h-8 w-full rounded-lg border px-2.5 text-sm"
+              >
+                <option value="kiosko">
+                  Kiosko web (tablet/PC con navegador)
+                </option>
+                <option value="lector_fisico">
+                  Lector físico (ZKTeco/Suprema vía agente local)
+                </option>
+              </select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="disp_nombre">Nombre *</Label>
               <Input

@@ -137,7 +137,7 @@ export function ConfiguracionForm({
         <CardHeader>
           <CardTitle>Métodos de registro habilitados</CardTitle>
           <CardDescription>
-            La huella digital se habilitará en la Fase 3.
+            Cada empresa elige qué métodos usar según su hardware disponible.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -170,8 +170,18 @@ export function ConfiguracionForm({
               </span>
             </span>
           </label>
-          <label className="flex items-center gap-3 text-sm opacity-50">
-            <Checkbox disabled /> Huella digital (Fase 3)
+          <label className="flex items-center gap-3 text-sm">
+            <Checkbox
+              name="metodo_huella"
+              defaultChecked={empresa.metodos.includes("huella")}
+              disabled={!puedeEditar}
+            />
+            <span>
+              Huella digital{" "}
+              <span className="text-muted-foreground">
+                (WebAuthn o lector físico; requiere consentimiento por empleado)
+              </span>
+            </span>
           </label>
         </CardContent>
       </Card>

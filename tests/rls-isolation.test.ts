@@ -114,6 +114,11 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
   afterAll(async () => {
     // Limpieza en orden inverso a las FKs
     for (const t of [tenantA, tenantB].filter(Boolean)) {
+      await service
+        .from("credenciales_webauthn")
+        .delete()
+        .eq("empresa_id", t.empresaId);
+      await service.from("dispositivos").delete().eq("empresa_id", t.empresaId);
       await service.from("empleados").delete().eq("empresa_id", t.empresaId);
       await service
         .from("usuarios_admin")
@@ -193,6 +198,7 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       "registros_asistencia",
       "consentimientos",
       "credenciales_biometricas",
+      "credenciales_webauthn",
       "metodos_acceso",
       "dispositivos",
       "auditoria",
@@ -206,6 +212,106 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
     }
   });
 
+  // --------------------------------------------------------------------------
+  // Fase 3 — criterio de fase: dispositivos y configuración de empresa
+  // aislados por RLS, y credenciales_webauthn protegida desde el día uno.
+  // --------------------------------------------------------------------------
+
+  it("Fase 3: admin A no puede crear ni tocar dispositivos de la empresa B", async () => {
+    // Insertar un dispositivo en B → violación de política RLS
+    const { error: errInsert } = await tenantA.cliente
+      .from("dispositivos")
+      .insert({
+        empresa_id: tenantB.empresaId,
+        tipo: "lector_fisico",
+        nombre: "Lector intruso",
+        api_key_hash: "0".repeat(64),
+      });
+    expect(errInsert).not.toBeNull();
+
+    // Sembrar un dispositivo legítimo en B (service_role) y verificar que A
+    // no puede leerlo, desactivarlo ni borrarlo.
+    const { data: dispB, error: errSeed } = await service
+      .from("dispositivos")
+      .insert({
+        empresa_id: tenantB.empresaId,
+        tipo: "kiosko",
+        nombre: "Kiosko B",
+        api_key_hash: "1".repeat(64),
+      })
+      .select("id")
+      .single();
+    expect(errSeed).toBeNull();
+
+    const { data: lectura } = await tenantA.cliente
+      .from("dispositivos")
+      .select("id")
+      .eq("id", dispB!.id);
+    expect(lectura).toEqual([]);
+
+    const { data: desactivados } = await tenantA.cliente
+      .from("dispositivos")
+      .update({ activo: false })
+      .eq("id", dispB!.id)
+      .select("id");
+    expect(desactivados).toEqual([]);
+
+    const { data: intacto } = await service
+      .from("dispositivos")
+      .select("activo")
+      .eq("id", dispB!.id)
+      .single();
+    expect(intacto?.activo).toBe(true);
+  });
+
+  it("Fase 3: admin A no puede cambiar la configuración de métodos de B", async () => {
+    const { data: actualizadas } = await tenantA.cliente
+      .from("empresas")
+      .update({ config_metodos_habilitados: ["pin"] })
+      .eq("id", tenantB.empresaId)
+      .select("id");
+    expect(actualizadas).toEqual([]); // 0 filas: RLS filtró a B
+
+    const { data: configB } = await service
+      .from("empresas")
+      .select("config_metodos_habilitados")
+      .eq("id", tenantB.empresaId)
+      .single();
+    expect(configB?.config_metodos_habilitados).toEqual(["pin", "qr"]);
+  });
+
+  it("Fase 3: admin A no puede leer ni insertar credenciales WebAuthn de B", async () => {
+    // Sembrar una credencial de huella (clave pública) en B
+    const { error: errSeed } = await service
+      .from("credenciales_webauthn")
+      .insert({
+        empleado_id: tenantB.empleadoId,
+        empresa_id: tenantB.empresaId,
+        credential_id: `cred-rls-${randomUUID()}`,
+        public_key: "cGstZGUtcHJ1ZWJh",
+        sign_count: 0,
+      });
+    expect(errSeed).toBeNull();
+
+    const { data: lectura, error: errLectura } = await tenantA.cliente
+      .from("credenciales_webauthn")
+      .select("id")
+      .eq("empresa_id", tenantB.empresaId);
+    expect(errLectura).toBeNull();
+    expect(lectura).toEqual([]);
+
+    const { error: errInsert } = await tenantA.cliente
+      .from("credenciales_webauthn")
+      .insert({
+        empleado_id: tenantB.empleadoId,
+        empresa_id: tenantB.empresaId,
+        credential_id: `cred-intruso-${randomUUID()}`,
+        public_key: "aW50cnVzbw",
+        sign_count: 0,
+      });
+    expect(errInsert).not.toBeNull();
+  });
+
   it("el rol anon (sin sesión) no ve absolutamente nada", async () => {
     const anon = createClient(URL!, ANON_KEY!, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -214,6 +320,7 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       "empresas",
       "empleados",
       "credenciales_biometricas",
+      "credenciales_webauthn",
       "metodos_acceso",
       "registros_asistencia",
       "dispositivos",

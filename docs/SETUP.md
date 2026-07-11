@@ -137,3 +137,21 @@ y limpia todo al final. **Debe pasar antes de avanzar a la Fase 1.**
    - `select accion, detalles from auditoria order by fecha desc limit 10;`
      → aparecen `biometria.enrolamiento_facial`, `biometria.verificacion_checkin`
      y `biometria.lectura_credenciales`.
+
+## Probar el flujo de la Fase 3 (huella digital)
+
+Requiere un aparato con autenticador de plataforma (Windows Hello, Touch ID o
+huella de Android) y HTTPS o `localhost`.
+
+1. **Habilitar el método**: Configuración → marca "Huella digital" → guardar.
+2. **Consentimiento**: en la ficha del empleado → tarjeta "Huella digital
+   (WebAuthn)" → "Registrar consentimiento" (LFPDPPP; queda con fecha e IP).
+3. **Enrolar EN el kiosko**: `/kiosko` → Huella → "Primera vez aquí" → teclea
+   el PIN del empleado → sigue las instrucciones del sensor. Sin
+   consentimiento previo, el servidor rechaza este paso.
+4. **Fichar**: `/kiosko` → Huella → "Fichar con mi huella" → sensor → banner
+   verde. El servidor solo verificó una firma: la huella nunca salió del
+   aparato (revisa `credenciales_webauthn`: solo hay claves públicas).
+5. **Lector físico (opcional)**: crea un dispositivo tipo "Lector físico",
+   copia su clave `RA-LECTOR-…` y sigue `agente-local/README.md` — el driver
+   `mock` permite probar todo el contrato sin hardware.

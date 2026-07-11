@@ -31,10 +31,11 @@ export type DispositivoVinculado = {
   empresaId: string;
   empresaNombre: string;
   nombre: string | null;
+  tipo: "kiosko" | "movil" | "lector_fisico";
   metodosHabilitados: string[];
 };
 
-/** Valida la API key de un kiosko y regresa su dispositivo + empresa. */
+/** Valida la API key de un dispositivo y regresa su ficha + empresa. */
 export async function validarDispositivo(
   clave: string,
 ): Promise<DispositivoVinculado | null> {
@@ -43,7 +44,7 @@ export async function validarDispositivo(
   const { data } = await admin
     .from("dispositivos")
     .select(
-      "id, empresa_id, nombre, activo, empresas(nombre, activa, config_metodos_habilitados)",
+      "id, empresa_id, nombre, tipo, activo, empresas(nombre, activa, config_metodos_habilitados)",
     )
     .eq("api_key_hash", hashApiKey(clave))
     .eq("activo", true)
@@ -60,6 +61,7 @@ export async function validarDispositivo(
     empresaId: data.empresa_id,
     empresaNombre: empresa.nombre,
     nombre: data.nombre,
+    tipo: data.tipo,
     metodosHabilitados: empresa.config_metodos_habilitados ?? ["pin", "qr"],
   };
 }
@@ -73,12 +75,12 @@ export type ResultadoCheckin =
     }
   | { ok: false; error: string };
 
-type EmpleadoMetodo = {
+export type EmpleadoMetodo = {
   empleadoId: string;
   empleadoNombre: string;
 };
 
-async function buscarPorPin(
+export async function buscarPorPin(
   empresaId: string,
   pin: string,
 ): Promise<EmpleadoMetodo | null> {
@@ -210,6 +212,91 @@ async function buscarPorRostro(
   };
 }
 
+/**
+ * Busca a un empleado activo por su número de empleado (flujo del agente
+ * local, sección 3.1: el lector físico ya verificó la huella EN la terminal y
+ * reporta el número del empleado; la confianza se delega al hardware).
+ */
+export async function buscarPorNumeroEmpleado(
+  empresaId: string,
+  numeroEmpleado: string,
+): Promise<EmpleadoMetodo | null> {
+  if (!numeroEmpleado) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("empleados")
+    .select("id, nombre, estatus")
+    .eq("empresa_id", empresaId)
+    .eq("numero_empleado", numeroEmpleado)
+    .maybeSingle();
+  if (!data || data.estatus !== "activo") return null;
+  return { empleadoId: data.id, empleadoNombre: data.nombre };
+}
+
+/**
+ * Registra la marcación de un empleado YA identificado/verificado.
+ * Núcleo compartido por el kiosko web (PIN/QR/rostro/huella) y el agente
+ * local: alterna entrada/salida y aplica el antirrebote.
+ */
+export async function registrarMarcacion(
+  dispositivo: DispositivoVinculado,
+  metodo: "pin" | "qr" | "facial" | "huella",
+  empleado: EmpleadoMetodo,
+): Promise<ResultadoCheckin> {
+  const admin = createAdminClient();
+  const hoy = fechaMx();
+  const ahora = horaMx();
+
+  // Último movimiento de hoy: alterna entrada/salida y aplica antirrebote.
+  const { data: ultimo } = await admin
+    .from("registros_asistencia")
+    .select("tipo, hora")
+    .eq("empleado_id", empleado.empleadoId)
+    .eq("fecha", hoy)
+    .order("registrado_en", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (ultimo) {
+    const [h, m] = ultimo.hora.split(":").map(Number);
+    const [h2, m2] = ahora.split(":").map(Number);
+    if (h2 * 60 + m2 - (h * 60 + m) < MINUTOS_ANTIRREBOTE) {
+      return {
+        ok: false,
+        error: "Ya registraste hace un momento. Espera un minuto.",
+      };
+    }
+  }
+
+  const tipo: "entrada" | "salida" =
+    ultimo?.tipo === "entrada" ? "salida" : "entrada";
+
+  const { error } = await admin.from("registros_asistencia").insert({
+    empleado_id: empleado.empleadoId,
+    empresa_id: dispositivo.empresaId,
+    metodo,
+    tipo,
+    fecha: hoy,
+    hora: ahora,
+    dispositivo_id: dispositivo.id,
+  });
+
+  if (error) {
+    console.error("[checkin] error al insertar registro:", error);
+    return {
+      ok: false,
+      error: "No se pudo guardar el registro. Intenta de nuevo.",
+    };
+  }
+
+  return {
+    ok: true,
+    empleadoNombre: empleado.empleadoNombre,
+    tipo,
+    hora: ahora.slice(0, 5),
+  };
+}
+
 /** Registra una marcación de entrada/salida para un kiosko ya validado. */
 export async function registrarCheckin(
   dispositivo: DispositivoVinculado,
@@ -241,56 +328,5 @@ export async function registrarCheckin(
     };
   }
 
-  const admin = createAdminClient();
-  const hoy = fechaMx();
-  const ahora = horaMx();
-
-  // Último movimiento de hoy: alterna entrada/salida y aplica antirrebote.
-  const { data: ultimo } = await admin
-    .from("registros_asistencia")
-    .select("tipo, hora")
-    .eq("empleado_id", encontrado.empleadoId)
-    .eq("fecha", hoy)
-    .order("registrado_en", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (ultimo) {
-    const [h, m] = ultimo.hora.split(":").map(Number);
-    const [h2, m2] = ahora.split(":").map(Number);
-    if (h2 * 60 + m2 - (h * 60 + m) < MINUTOS_ANTIRREBOTE) {
-      return {
-        ok: false,
-        error: "Ya registraste hace un momento. Espera un minuto.",
-      };
-    }
-  }
-
-  const tipo: "entrada" | "salida" =
-    ultimo?.tipo === "entrada" ? "salida" : "entrada";
-
-  const { error } = await admin.from("registros_asistencia").insert({
-    empleado_id: encontrado.empleadoId,
-    empresa_id: dispositivo.empresaId,
-    metodo,
-    tipo,
-    fecha: hoy,
-    hora: ahora,
-    dispositivo_id: dispositivo.id,
-  });
-
-  if (error) {
-    console.error("[checkin] error al insertar registro:", error);
-    return {
-      ok: false,
-      error: "No se pudo guardar el registro. Intenta de nuevo.",
-    };
-  }
-
-  return {
-    ok: true,
-    empleadoNombre: encontrado.empleadoNombre,
-    tipo,
-    hora: ahora.slice(0, 5),
-  };
+  return registrarMarcacion(dispositivo, metodo, encontrado);
 }

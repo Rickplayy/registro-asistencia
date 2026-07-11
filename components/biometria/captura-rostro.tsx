@@ -22,7 +22,10 @@ import { cn } from "@/lib/utils";
 type FaceApi = typeof import("@vladmandic/face-api");
 // Los .d.ts de @vladmandic/face-api no tipan bien los métodos del `tf` que
 // re-exportan (existen en runtime, confirmado en pruebas manuales).
-type TfBackendControl = { setBackend(name: string): Promise<boolean>; ready(): Promise<void> };
+type TfBackendControl = {
+  setBackend(name: string): Promise<boolean>;
+  ready(): Promise<void>;
+};
 
 const RUTA_MODELOS = "/modelos-face";
 const INTERVALO_DETECCION_MS = 700;

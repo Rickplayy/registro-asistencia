@@ -30,7 +30,8 @@ export default async function DispositivosPage() {
         <div>
           <h1 className="text-2xl font-semibold text-brand">Dispositivos</h1>
           <p className="text-sm text-muted-foreground">
-            Kioskos autorizados a registrar asistencia de tu empresa.
+            Kioskos y lectores físicos autorizados a registrar asistencia de tu
+            empresa.
           </p>
         </div>
         <AltaDispositivo />

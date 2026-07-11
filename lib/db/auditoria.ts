@@ -20,6 +20,9 @@ export type AccionAuditoria =
   | "biometria.consentimiento_facial"
   | "biometria.enrolamiento_facial"
   | "biometria.revocacion_facial"
+  | "biometria.consentimiento_huella"
+  | "biometria.enrolamiento_huella"
+  | "biometria.revocacion_huella"
   | "biometria.lectura_credenciales"
   | "biometria.verificacion_checkin";
 
