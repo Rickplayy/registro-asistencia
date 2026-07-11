@@ -156,19 +156,3 @@ export function reporteAsistencia(
     };
   });
 }
-
-/** CSV UTF-8 con BOM (para que Excel en español lo abra con acentos bien). */
-export function reporteACsv(filas: FilaReporte[]): string {
-  const esc = (v: string | number) => {
-    const s = String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const encabezado =
-    "Empleado,Puesto,Días trabajados,Retardos,Faltas,Horas totales";
-  const lineas = filas.map((f) =>
-    [f.nombre, f.puesto, f.diasTrabajados, f.retardos, f.faltas, f.horasTotales]
-      .map(esc)
-      .join(","),
-  );
-  return "﻿" + [encabezado, ...lineas].join("\r\n");
-}

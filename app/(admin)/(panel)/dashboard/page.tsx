@@ -5,6 +5,11 @@ import { requerirAdmin } from "@/lib/auth/session";
 import { createClient } from "@/lib/db/server";
 import { fechaMx } from "@/lib/asistencia/fechas";
 import {
+  alertasJornada,
+  inicioDeSemana,
+  limiteSemanalHoras,
+} from "@/lib/asistencia/jornada";
+import {
   esRetardo,
   primerasEntradas,
   resumenDelDia,
@@ -45,25 +50,38 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const hoy = fechaMx();
 
-  const [{ data: empresa }, { count: totalActivos }, { data: registrosHoy }] =
-    await Promise.all([
-      supabase
-        .from("empresas")
-        .select("hora_entrada, tolerancia_retardo_minutos")
-        .eq("id", perfil.empresa_id ?? "")
-        .maybeSingle(),
-      supabase
-        .from("empleados")
-        .select("id", { count: "exact", head: true })
-        .eq("estatus", "activo"),
-      supabase
-        .from("registros_asistencia")
-        .select(
-          "id, empleado_id, metodo, tipo, fecha, hora, registrado_en, empleados(nombre)",
-        )
-        .eq("fecha", hoy)
-        .order("registrado_en", { ascending: false }),
-    ]);
+  const semanaDesde = inicioDeSemana(hoy);
+
+  const [
+    { data: empresa },
+    { count: totalActivos },
+    { data: registrosHoy },
+    { data: empleadosActivos },
+    { data: registrosSemana },
+  ] = await Promise.all([
+    supabase
+      .from("empresas")
+      .select("hora_entrada, tolerancia_retardo_minutos")
+      .eq("id", perfil.empresa_id ?? "")
+      .maybeSingle(),
+    supabase
+      .from("empleados")
+      .select("id", { count: "exact", head: true })
+      .eq("estatus", "activo"),
+    supabase
+      .from("registros_asistencia")
+      .select(
+        "id, empleado_id, metodo, tipo, fecha, hora, registrado_en, empleados(nombre)",
+      )
+      .eq("fecha", hoy)
+      .order("registrado_en", { ascending: false }),
+    supabase.from("empleados").select("id, nombre").eq("estatus", "activo"),
+    supabase
+      .from("registros_asistencia")
+      .select("empleado_id, fecha, hora, tipo")
+      .gte("fecha", semanaDesde)
+      .lte("fecha", hoy),
+  ]);
 
   const jornada = {
     hora_entrada: empresa?.hora_entrada ?? "09:00:00",
@@ -80,6 +98,14 @@ export default async function DashboardPage() {
   const resumen = resumenDelDia(registros, totalActivos ?? 0, jornada);
   const primeras = primerasEntradas(registros);
   const recientes = (registrosHoy ?? []).slice(0, 10);
+
+  // Alertas de jornada (Fase 4): límite semanal según la reducción gradual.
+  const limiteSemana = limiteSemanalHoras(hoy);
+  const alertas = alertasJornada(
+    empleadosActivos ?? [],
+    (registrosSemana ?? []) as RegistroDia[],
+    hoy,
+  );
 
   const tarjetas = [
     { titulo: "Presentes", valor: resumen.presentes, tono: "text-success" },
@@ -114,6 +140,46 @@ export default async function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Alertas de jornada</CardTitle>
+          <CardDescription>
+            Límite vigente: {limiteSemana} h/semana ({hoy.slice(0, 4)}, reforma
+            laboral). Se avisa desde el 90% del límite.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {alertas.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              Ningún empleado se acerca al límite de jornada esta semana.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {alertas.map((a) => (
+                <li
+                  key={a.empleadoId}
+                  className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                >
+                  <span className="font-medium">{a.nombre}</span>
+                  <span className="flex items-center gap-2 tabular-nums">
+                    {a.horasSemana.toFixed(2)} / {a.limite} h
+                    {a.nivel === "excedido" ? (
+                      <Badge className="bg-destructive text-white">
+                        Límite excedido
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-warning text-warning-foreground">
+                        Cerca del límite
+                      </Badge>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

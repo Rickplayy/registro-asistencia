@@ -14,6 +14,7 @@ export type DatosReporte = {
   filas: FilaReporte[];
   desde: string;
   hasta: string;
+  empresaNombre: string;
 };
 
 /** Primer día del mes actual (CDMX). */
@@ -31,7 +32,7 @@ export async function obtenerReporte(
     await Promise.all([
       supabase
         .from("empresas")
-        .select("hora_entrada, tolerancia_retardo_minutos")
+        .select("nombre, hora_entrada, tolerancia_retardo_minutos")
         .maybeSingle(),
       supabase
         .from("empleados")
@@ -57,7 +58,7 @@ export async function obtenerReporte(
     fechaMx(),
   );
 
-  return { filas, desde, hasta };
+  return { filas, desde, hasta, empresaNombre: empresa?.nombre ?? "" };
 }
 
 /** Valida un parámetro de fecha "YYYY-MM-DD"; regresa null si es inválido. */

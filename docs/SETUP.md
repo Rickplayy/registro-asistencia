@@ -155,3 +155,18 @@ huella de Android) y HTTPS o `localhost`.
 5. **Lector físico (opcional)**: crea un dispositivo tipo "Lector físico",
    copia su clave `RA-LECTOR-…` y sigue `agente-local/README.md` — el driver
    `mock` permite probar todo el contrato sin hardware.
+
+## Probar el flujo de la Fase 4 (reportes STPS)
+
+1. **Reporte**: Reportes → ajusta el periodo → la tabla muestra días
+   trabajados, retardos, faltas y horas por empleado.
+2. **Exportar**: botones "Exportar Excel / PDF / CSV" (los formatos salen del
+   registro de adaptadores — ver `lib/reportes/README.md` para agregar el
+   formato STPS definitivo cuando se publique).
+3. **Alertas de jornada**: el dashboard muestra la tarjeta "Alertas de
+   jornada" con el límite del año (48 h en 2026); alerta en ámbar desde el
+   90% y en rojo al excederlo.
+4. **Verificar auditoría**:
+   `select accion, detalles from auditoria where accion like 'reporte.%' order by fecha desc;`
+   → cada consulta (`reporte.consulta`) y cada exportación
+   (`reporte.exportacion`) con quién, periodo, formato y nº de empleados.

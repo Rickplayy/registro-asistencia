@@ -24,7 +24,9 @@ export type AccionAuditoria =
   | "biometria.enrolamiento_huella"
   | "biometria.revocacion_huella"
   | "biometria.lectura_credenciales"
-  | "biometria.verificacion_checkin";
+  | "biometria.verificacion_checkin"
+  | "reporte.consulta"
+  | "reporte.exportacion";
 
 export async function auditar(
   supabase: SupabaseClient,

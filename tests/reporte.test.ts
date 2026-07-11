@@ -10,7 +10,6 @@ import {
 import {
   esRetardo,
   horasDelDia,
-  reporteACsv,
   reporteAsistencia,
   resumenDelDia,
   type RegistroDia,
@@ -148,25 +147,5 @@ describe("reporte por empleado (vista 8.5)", () => {
     );
     const beto = filas.find((f) => f.empleadoId === "beto")!;
     expect(beto.faltas).toBe(1); // solo el martes
-  });
-});
-
-describe("exportación CSV", () => {
-  it("incluye BOM, encabezados y escapa comas/comillas", () => {
-    const csv = reporteACsv([
-      {
-        empleadoId: "x",
-        nombre: 'Pérez, José "Pepe"',
-        puesto: "Ventas",
-        diasTrabajados: 5,
-        retardos: 1,
-        faltas: 0,
-        horasTotales: 42.5,
-      },
-    ]);
-    expect(csv.charCodeAt(0)).toBe(0xfeff); // BOM para Excel
-    expect(csv).toContain("Empleado,Puesto");
-    expect(csv).toContain('"Pérez, José ""Pepe"""');
-    expect(csv).toContain("42.5");
   });
 });
