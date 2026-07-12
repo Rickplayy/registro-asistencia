@@ -15,6 +15,10 @@ import {
   registrarConsentimientoHuella,
   revocarHuella,
 } from "@/lib/biometria/huella";
+import {
+  registrarSalario,
+  type NominaActionResult,
+} from "@/lib/nomina/actions";
 import { EnrolamientoFacial } from "@/components/biometria/enrolamiento-facial";
 import { QR_PASO_SEGUNDOS } from "@/lib/auth/qr-constantes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -67,11 +71,126 @@ function QrRotativo({ empleadoId }: { empleadoId: string }) {
   );
 }
 
+/** Tarjeta de salario (Fase 6): histórico, el cambio cierra la vigencia anterior. */
+function SalarioCard({
+  empleadoId,
+  salarioVigente,
+  deshabilitado,
+}: {
+  empleadoId: string;
+  salarioVigente: {
+    tipo: "hora" | "dia";
+    monto: number;
+    vigenteDesde: string;
+  } | null;
+  deshabilitado: boolean;
+}) {
+  const [state, formAction, pending] = useActionState<
+    NominaActionResult | undefined,
+    FormData
+  >(registrarSalario.bind(null, empleadoId), undefined);
+  const [editando, setEditando] = useState(false);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Salario</CardTitle>
+        <CardDescription>
+          Histórico: cada cambio cierra la vigencia anterior y queda en
+          auditoría — reconstruible ante una inspección.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {state && !state.ok && (
+          <Alert variant="destructive">
+            <AlertDescription>{state.error}</AlertDescription>
+          </Alert>
+        )}
+        {state?.ok && (
+          <Alert>
+            <AlertDescription>Salario registrado.</AlertDescription>
+          </Alert>
+        )}
+        {salarioVigente ? (
+          <p className="text-sm">
+            Vigente:{" "}
+            <strong>
+              ${salarioVigente.monto.toFixed(2)} por{" "}
+              {salarioVigente.tipo === "hora" ? "hora" : "día"}
+            </strong>{" "}
+            desde el {salarioVigente.vigenteDesde}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Sin salario capturado: no aparece en la proyección de nómina.
+          </p>
+        )}
+        {!editando ? (
+          <Button
+            variant="outline"
+            disabled={deshabilitado}
+            onClick={() => setEditando(true)}
+          >
+            {salarioVigente
+              ? "Registrar cambio de salario"
+              : "Capturar salario"}
+          </Button>
+        ) : (
+          <form action={formAction} className="space-y-3 rounded-lg border p-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label htmlFor="salario_tipo">Tipo</Label>
+                <select
+                  id="salario_tipo"
+                  name="tipo"
+                  defaultValue={salarioVigente?.tipo ?? "dia"}
+                  className="border-input bg-background flex h-8 w-full rounded-lg border px-2.5 text-sm"
+                >
+                  <option value="dia">Por día</option>
+                  <option value="hora">Por hora</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="salario_monto">Monto ($) *</Label>
+                <Input
+                  id="salario_monto"
+                  name="monto"
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="salario_desde">Vigente desde</Label>
+                <Input id="salario_desde" name="vigente_desde" type="date" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={pending}>
+                {pending ? "Guardando…" : "Guardar salario"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditando(false)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function FichaEmpleado({
   empleado,
   rostroEnroladoDesde,
   huellasActivas,
   consentimientoHuella,
+  salarioVigente,
 }: {
   empleado: EmpleadoPlano;
   /** created_at de la credencial facial vigente, o null si no hay. */
@@ -80,6 +199,12 @@ export function FichaEmpleado({
   huellasActivas: number;
   /** ¿Hay consentimiento biometrico_huella vigente? */
   consentimientoHuella: boolean;
+  /** Salario vigente del histórico (Fase 6), o null si no hay. */
+  salarioVigente: {
+    tipo: "hora" | "dia";
+    monto: number;
+    vigenteDesde: string;
+  } | null;
 }) {
   const [state, formAction, pending] = useActionState<
     AccionEmpleadoResult,
@@ -350,6 +475,12 @@ export function FichaEmpleado({
               )}
             </CardContent>
           </Card>
+
+          <SalarioCard
+            empleadoId={empleado.id}
+            salarioVigente={salarioVigente}
+            deshabilitado={esBaja}
+          />
 
           <Card>
             <CardHeader>

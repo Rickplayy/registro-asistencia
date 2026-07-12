@@ -115,6 +115,11 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
     // Limpieza en orden inverso a las FKs
     for (const t of [tenantA, tenantB].filter(Boolean)) {
       for (const tabla of [
+        "incidencias",
+        "bonos_aprobaciones",
+        "bonos",
+        "salarios",
+        "configuracion_nomina",
         "registros_asistencia",
         "consentimientos",
         "credenciales_webauthn",
@@ -376,6 +381,31 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
         estado: "activa",
         proveedor: "simulado",
       },
+      // Fase 6 — tablas de nómina (regla: ninguna feature sin su entrada aquí)
+      salarios: {
+        empresa_id: tenantB.empresaId,
+        empleado_id: tenantB.empleadoId,
+        tipo: "dia",
+        monto: 500,
+        vigente_desde: "2026-01-01",
+      },
+      configuracion_nomina: {
+        empresa_id: tenantB.empresaId,
+        tope_descuento_pct: 30,
+      },
+      bonos: {
+        empresa_id: tenantB.empresaId,
+        nombre: "Bono Matriz B",
+        tipo: "fijo",
+        monto_o_pct: 100,
+      },
+      incidencias: {
+        empresa_id: tenantB.empresaId,
+        empleado_id: tenantB.empleadoId,
+        periodo_desde: "2026-07-01",
+        periodo_hasta: "2026-07-15",
+        total_proyectado: 1000,
+      },
     };
 
     const sembradas: Record<string, string> = {};
@@ -428,6 +458,35 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       .select("id")
       .eq("id", tenantB.empresaId);
     expect(empresaB).toEqual([]);
+
+    // bonos_aprobaciones (depende del bono sembrado arriba)
+    const { data: aprobacion, error: errAprob } = await service
+      .from("bonos_aprobaciones")
+      .insert({
+        empresa_id: tenantB.empresaId,
+        bono_id: sembradas.bonos,
+        empleado_id: tenantB.empleadoId,
+        periodo_desde: "2026-07-01",
+        periodo_hasta: "2026-07-15",
+      })
+      .select("id")
+      .single();
+    expect(errAprob).toBeNull();
+    const { data: aprobLectura } = await tenantA.cliente
+      .from("bonos_aprobaciones")
+      .select("id")
+      .eq("id", aprobacion!.id);
+    expect(aprobLectura).toEqual([]);
+    const { error: errAprobCruzada } = await tenantA.cliente
+      .from("bonos_aprobaciones")
+      .insert({
+        empresa_id: tenantB.empresaId,
+        bono_id: sembradas.bonos,
+        empleado_id: tenantB.empleadoId,
+        periodo_desde: "2026-08-01",
+        periodo_hasta: "2026-08-15",
+      });
+    expect(errAprobCruzada).not.toBeNull();
   }, 120_000);
 
   it("el rol anon (sin sesión) no ve absolutamente nada", async () => {
@@ -446,6 +505,11 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       "consentimientos",
       "auditoria",
       "suscripciones",
+      "salarios",
+      "configuracion_nomina",
+      "bonos",
+      "bonos_aprobaciones",
+      "incidencias",
     ]) {
       const { data } = await anon.from(tabla).select("*").limit(5);
       expect(data ?? []).toEqual([]);

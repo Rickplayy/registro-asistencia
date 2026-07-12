@@ -46,6 +46,14 @@ export default async function EmpleadoDetallePage({
     });
   }
 
+  // Salario vigente (Fase 6): la fila del histórico sin vigente_hasta.
+  const { data: salarioVigente } = await supabase
+    .from("salarios")
+    .select("tipo, monto, vigente_desde")
+    .eq("empleado_id", empleado.id)
+    .is("vigente_hasta", null)
+    .maybeSingle();
+
   // Estado biométrico (solo metadatos, jamás plantillas ni claves). Todo
   // acceso a tablas de credenciales queda en auditoría, sin excepción.
   const [
@@ -91,6 +99,15 @@ export default async function EmpleadoDetallePage({
       rostroEnroladoDesde={credencialFacial?.created_at ?? null}
       huellasActivas={huellas ?? 0}
       consentimientoHuella={Boolean(consentHuella)}
+      salarioVigente={
+        salarioVigente
+          ? {
+              tipo: salarioVigente.tipo as "hora" | "dia",
+              monto: Number(salarioVigente.monto),
+              vigenteDesde: salarioVigente.vigente_desde,
+            }
+          : null
+      }
       empleado={{
         id: empleado.id,
         nombre: empleado.nombre,

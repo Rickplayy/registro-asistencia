@@ -10,7 +10,7 @@
     "format": "prettier --write \"{app,components,lib,tests,scripts}/**/*.{ts,tsx,css,md,mjs}\"",
     "format:check": "prettier --check \"{app,components,lib,tests,scripts}/**/*.{ts,tsx,css,md,mjs}\"",
     "test": "vitest run",
-    "test:unit": "vitest run tests/crypto.test.ts tests/pin-qr.test.ts tests/reporte.test.ts tests/biometria.test.ts tests/agente-contrato.test.ts tests/reportes-stps.test.ts tests/escalamiento.test.ts",
+    "test:unit": "vitest run tests/crypto.test.ts tests/pin-qr.test.ts tests/reporte.test.ts tests/biometria.test.ts tests/agente-contrato.test.ts tests/reportes-stps.test.ts tests/escalamiento.test.ts tests/nomina.test.ts",
     "test:rls": "vitest run tests/rls-isolation.test.ts",
     "generate:key": "node scripts/generate-key.mjs",
     "models:download": "node scripts/download-face-models.mjs",

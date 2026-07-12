@@ -9,12 +9,11 @@ const NAVEGACION = [
   { href: "/dashboard", etiqueta: "Dashboard" },
   { href: "/empleados", etiqueta: "Empleados" },
   { href: "/reportes", etiqueta: "Reportes" },
+  { href: "/nomina", etiqueta: "Nómina" },
   { href: "/dispositivos", etiqueta: "Dispositivos" },
   { href: "/configuracion", etiqueta: "Configuración" },
   { href: "/plan", etiqueta: "Plan y facturación" },
 ];
-
-const PROXIMAMENTE = [{ etiqueta: "Nómina", fase: "Fase 6" }];
 
 export function Sidebar({ empresaNombre }: { empresaNombre: string }) {
   const pathname = usePathname();
@@ -51,16 +50,6 @@ export function Sidebar({ empresaNombre }: { empresaNombre: string }) {
             </Link>
           );
         })}
-        {PROXIMAMENTE.map((item) => (
-          <span
-            key={item.etiqueta}
-            className="block cursor-not-allowed rounded-md px-3 py-2 opacity-50"
-            title={`Disponible en la ${item.fase}`}
-          >
-            {item.etiqueta}{" "}
-            <span className="text-xs opacity-70">({item.fase})</span>
-          </span>
-        ))}
       </nav>
       <div className="p-3">
         <Link

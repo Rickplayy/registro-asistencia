@@ -30,7 +30,14 @@ export type AccionAuditoria =
   | "suscripcion.cambio_plan"
   | "suscripcion.activacion"
   | "suscripcion.cancelacion"
-  | "empleado.purga_arco";
+  | "empleado.purga_arco"
+  | "salario.alta"
+  | "nomina.configuracion"
+  | "bono.alta"
+  | "bono.desactivacion"
+  | "bono.aprobacion"
+  | "nomina.consulta"
+  | "nomina.exportacion";
 
 export async function auditar(
   supabase: SupabaseClient,
