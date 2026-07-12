@@ -13,6 +13,7 @@ const RUTAS_PUBLICAS = [
   "/api/health",
   "/api/kiosko",
   "/api/agente", // autenticado por API key de dispositivo, no por sesión
+  "/api/pagos/webhook", // autenticado por firma del proveedor de pagos
 ];
 
 export default async function proxy(request: NextRequest) {

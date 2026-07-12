@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 
 import { requerirAdmin } from "@/lib/auth/session";
 import { createClient } from "@/lib/db/server";
+import { obtenerPlan } from "@/lib/planes";
 import { ConfiguracionForm } from "./configuracion-form";
+import { MarcaForm } from "./marca-form";
 
 export const metadata: Metadata = {
   title: "Configuración · Registro de Asistencia",
@@ -15,7 +17,7 @@ export default async function ConfiguracionPage() {
   const { data: empresa } = await supabase
     .from("empresas")
     .select(
-      "nombre, rfc_empresa, hora_entrada, hora_salida, tolerancia_retardo_minutos, config_metodos_habilitados",
+      "nombre, rfc_empresa, hora_entrada, hora_salida, tolerancia_retardo_minutos, config_metodos_habilitados, plan, logo_data_url, color_marca",
     )
     .eq("id", perfil.empresa_id ?? "")
     .maybeSingle();
@@ -48,6 +50,11 @@ export default async function ConfiguracionPage() {
         puedeEditar={
           perfil.rol === "admin_empresa" || perfil.rol === "super_admin"
         }
+      />
+      <MarcaForm
+        colorActual={empresa.color_marca}
+        logoActual={empresa.logo_data_url}
+        permitido={obtenerPlan(empresa.plan).whiteLabel}
       />
     </div>
   );

@@ -14,6 +14,10 @@ import {
   tieneConsentimientoHuella,
 } from "@/lib/biometria/webauthn";
 import { dispositivoDesdeCookie, origenYRpId } from "../../_shared";
+import { permitirIntento } from "@/lib/seguridad/rate-limit";
+
+/** Freno del enrolamiento por PIN (Fase 5): 10 intentos/min por dispositivo. */
+const LIMITE = { max: 10, ventanaMs: 60_000 };
 
 export async function POST(req: NextRequest) {
   const dispositivo = await dispositivoDesdeCookie(req);
@@ -21,6 +25,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Kiosko no vinculado." },
       { status: 401 },
+    );
+  }
+  if (!permitirIntento(`huella-registro:${dispositivo.id}`, LIMITE)) {
+    return NextResponse.json(
+      { error: "Demasiados intentos. Espera un minuto." },
+      { status: 429 },
     );
   }
   if (!dispositivo.metodosHabilitados.includes("huella")) {

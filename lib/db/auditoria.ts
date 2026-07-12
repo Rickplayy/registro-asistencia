@@ -26,7 +26,11 @@ export type AccionAuditoria =
   | "biometria.lectura_credenciales"
   | "biometria.verificacion_checkin"
   | "reporte.consulta"
-  | "reporte.exportacion";
+  | "reporte.exportacion"
+  | "suscripcion.cambio_plan"
+  | "suscripcion.activacion"
+  | "suscripcion.cancelacion"
+  | "empleado.purga_arco";
 
 export async function auditar(
   supabase: SupabaseClient,

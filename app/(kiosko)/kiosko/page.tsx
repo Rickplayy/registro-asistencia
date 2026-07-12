@@ -31,6 +31,8 @@ export default async function KioskoPage() {
       empresaNombre={dispositivo.empresaNombre}
       dispositivoNombre={dispositivo.nombre ?? "Kiosko"}
       metodosHabilitados={dispositivo.metodosHabilitados}
+      logoDataUrl={dispositivo.logoDataUrl}
+      colorMarca={dispositivo.colorMarca}
     />
   );
 }

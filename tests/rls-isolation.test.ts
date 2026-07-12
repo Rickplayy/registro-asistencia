@@ -114,16 +114,20 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
   afterAll(async () => {
     // Limpieza en orden inverso a las FKs
     for (const t of [tenantA, tenantB].filter(Boolean)) {
-      await service
-        .from("credenciales_webauthn")
-        .delete()
-        .eq("empresa_id", t.empresaId);
-      await service.from("dispositivos").delete().eq("empresa_id", t.empresaId);
-      await service.from("empleados").delete().eq("empresa_id", t.empresaId);
-      await service
-        .from("usuarios_admin")
-        .delete()
-        .eq("empresa_id", t.empresaId);
+      for (const tabla of [
+        "registros_asistencia",
+        "consentimientos",
+        "credenciales_webauthn",
+        "credenciales_biometricas",
+        "metodos_acceso",
+        "dispositivos",
+        "suscripciones",
+        "auditoria",
+        "empleados",
+        "usuarios_admin",
+      ]) {
+        await service.from(tabla).delete().eq("empresa_id", t.empresaId);
+      }
       await service.from("empresas").delete().eq("id", t.empresaId);
       await service.auth.admin.deleteUser(t.adminAuthId);
     }
@@ -312,6 +316,120 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
     expect(errInsert).not.toBeNull();
   });
 
+  // --------------------------------------------------------------------------
+  // Fase 5 — MATRIZ DE AISLAMIENTO TABLA POR TABLA (criterio de fase).
+  // Por cada tabla sensible: se siembra una fila real en la empresa B
+  // (service_role) y se verifica que el admin de A (1) no la lee ni
+  // filtrando ni por acceso directo, y (2) no puede insertar en el tenant B.
+  // Ninguna feature nueva se considera terminada sin su entrada aquí.
+  // --------------------------------------------------------------------------
+
+  it("Fase 5: matriz de aislamiento — ninguna tabla regresa datos de otra empresa", async () => {
+    // Sembrar UNA fila por tabla en el tenant B
+    const semillas: Record<string, Record<string, unknown>> = {
+      empleados: { empresa_id: tenantB.empresaId, nombre: "Matriz B" },
+      credenciales_biometricas: {
+        empresa_id: tenantB.empresaId,
+        empleado_id: tenantB.empleadoId,
+        tipo: "facial",
+        plantilla_cifrada: "v1:matriz:matriz:matriz",
+      },
+      credenciales_webauthn: {
+        empresa_id: tenantB.empresaId,
+        empleado_id: tenantB.empleadoId,
+        credential_id: `matriz-${randomUUID()}`,
+        public_key: "bWF0cml6",
+        sign_count: 0,
+      },
+      metodos_acceso: {
+        empresa_id: tenantB.empresaId,
+        empleado_id: tenantB.empleadoId,
+        tipo: "pin",
+        valor_hash_o_token: `matriz-${randomUUID()}`,
+      },
+      registros_asistencia: {
+        empresa_id: tenantB.empresaId,
+        empleado_id: tenantB.empleadoId,
+        metodo: "pin",
+        tipo: "entrada",
+      },
+      dispositivos: {
+        empresa_id: tenantB.empresaId,
+        tipo: "kiosko",
+        nombre: "Matriz B",
+        api_key_hash: `matriz-${randomUUID()}`,
+      },
+      consentimientos: {
+        empresa_id: tenantB.empresaId,
+        empleado_id: tenantB.empleadoId,
+        tipo_dato: "datos_personales",
+        version_aviso_privacidad: "matriz",
+      },
+      auditoria: {
+        empresa_id: tenantB.empresaId,
+        accion: "matriz.prueba",
+        entidad_afectada: "matriz",
+      },
+      suscripciones: {
+        empresa_id: tenantB.empresaId,
+        plan: "pro",
+        estado: "activa",
+        proveedor: "simulado",
+      },
+    };
+
+    const sembradas: Record<string, string> = {};
+    for (const [tabla, fila] of Object.entries(semillas)) {
+      const { data, error } = await service
+        .from(tabla)
+        .insert(fila)
+        .select("id")
+        .single();
+      expect(error, `siembra en ${tabla}: ${error?.message}`).toBeNull();
+      sembradas[tabla] = String(data!.id);
+    }
+
+    for (const [tabla, filaId] of Object.entries(sembradas)) {
+      // (1a) Filtrando por la empresa B → vacío
+      const { data: porEmpresa, error: errSel } = await tenantA.cliente
+        .from(tabla)
+        .select("id")
+        .eq("empresa_id", tenantB.empresaId);
+      expect(errSel, `select ${tabla}`).toBeNull();
+      expect(porEmpresa, `lectura por empresa en ${tabla}`).toEqual([]);
+
+      // (1b) Acceso directo por id conocido → vacío
+      const { data: directo } = await tenantA.cliente
+        .from(tabla)
+        .select("id")
+        .eq("id", filaId);
+      expect(directo, `lectura directa en ${tabla}`).toEqual([]);
+
+      // (2) Insertar en el tenant B → rechazado por RLS
+      const { error: errInsert } = await tenantA.cliente
+        .from(tabla)
+        .insert(semillas[tabla]);
+      expect(
+        errInsert,
+        `insert cruzado en ${tabla} debió fallar`,
+      ).not.toBeNull();
+    }
+
+    // usuarios_admin (sin semilla nueva): A no ve el perfil del admin de B
+    const { data: adminsB } = await tenantA.cliente
+      .from("usuarios_admin")
+      .select("id")
+      .eq("empresa_id", tenantB.empresaId);
+    expect(adminsB).toEqual([]);
+
+    // empresas: A no lee la fila de B ni puede actualizarla
+    const { data: empresaB } = await tenantA.cliente
+      .from("empresas")
+      .select("id")
+      .eq("id", tenantB.empresaId);
+    expect(empresaB).toEqual([]);
+  }, 120_000);
+
   it("el rol anon (sin sesión) no ve absolutamente nada", async () => {
     const anon = createClient(URL!, ANON_KEY!, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -327,6 +445,7 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       "usuarios_admin",
       "consentimientos",
       "auditoria",
+      "suscripciones",
     ]) {
       const { data } = await anon.from(tabla).select("*").limit(5);
       expect(data ?? []).toEqual([]);

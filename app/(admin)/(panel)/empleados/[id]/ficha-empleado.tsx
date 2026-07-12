@@ -10,6 +10,7 @@ import {
   type AccionEmpleadoResult,
 } from "@/lib/empleados/actions";
 import { revocarRostro } from "@/lib/biometria/enrolamiento";
+import { purgarEmpleado } from "@/lib/empleados/arco";
 import {
   registrarConsentimientoHuella,
   revocarHuella,
@@ -445,6 +446,30 @@ export function FichaEmpleado({
               >
                 {esBaja ? "Reactivar" : "Dar de baja"}
               </Button>
+              {esBaja && (
+                <div className="mt-4 space-y-2 border-t pt-4">
+                  <p className="text-xs text-muted-foreground">
+                    Derechos ARCO: tras el periodo de retención legal (365 días
+                    desde la baja) puedes purgar sus datos personales. Se
+                    elimina biometría, PIN/QR y expediente; la asistencia se
+                    conserva anonimizada (ver docs/RETENCION-ARCO.md).
+                  </p>
+                  <Button
+                    variant="destructive"
+                    disabled={enTransicion}
+                    onClick={() =>
+                      startTransition(async () => {
+                        setErrorAccion(null);
+                        const res = await purgarEmpleado(empleado.id);
+                        if (res.ok) window.location.assign("/empleados");
+                        else setErrorAccion(res.error);
+                      })
+                    }
+                  >
+                    Purgar datos personales (ARCO)
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

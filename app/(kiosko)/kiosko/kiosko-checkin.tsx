@@ -54,10 +54,15 @@ export function KioskoCheckin({
   empresaNombre,
   dispositivoNombre,
   metodosHabilitados,
+  logoDataUrl = null,
+  colorMarca = null,
 }: {
   empresaNombre: string;
   dispositivoNombre: string;
   metodosHabilitados: string[];
+  /** White-label (Fase 5): logo/color de la empresa si su plan lo incluye. */
+  logoDataUrl?: string | null;
+  colorMarca?: string | null;
 }) {
   const [metodoActivo, setMetodoActivo] = useState<Metodo | null>(null);
   const [pin, setPin] = useState("");
@@ -123,9 +128,24 @@ export function KioskoCheckin({
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-brand px-4 py-6 text-brand-foreground">
-      <header className="flex items-center justify-between text-sm opacity-80">
-        <span>{empresaNombre}</span>
+    <main
+      className="flex min-h-screen flex-col bg-brand px-4 py-6 text-brand-foreground"
+      // White-label: el color de marca sustituye el fondo base; los colores de
+      // estado (verde/ámbar/rojo) se mantienen fijos (sección 7.3).
+      style={colorMarca ? { backgroundColor: colorMarca } : undefined}
+    >
+      <header className="flex items-center justify-between text-sm opacity-90">
+        <span className="flex items-center gap-2">
+          {logoDataUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoDataUrl}
+              alt=""
+              className="h-8 w-auto rounded bg-white/90 p-0.5"
+            />
+          )}
+          {empresaNombre}
+        </span>
         <span>{dispositivoNombre}</span>
       </header>
 

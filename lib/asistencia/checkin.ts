@@ -12,6 +12,7 @@ import { createAdminClient } from "@/lib/db/admin";
 import { hashPin } from "@/lib/auth/pin";
 import { parsearPayloadQr, verificarCodigoQr } from "@/lib/auth/qr";
 import { decryptField } from "@/lib/crypto";
+import { metodosSegunPlan, obtenerPlan } from "@/lib/planes";
 import {
   deserializarPlantilla,
   esDescriptorValido,
@@ -33,6 +34,9 @@ export type DispositivoVinculado = {
   nombre: string | null;
   tipo: "kiosko" | "movil" | "lector_fisico";
   metodosHabilitados: string[];
+  /** White-label (Fase 5): branding de la empresa para el kiosko. */
+  logoDataUrl: string | null;
+  colorMarca: string | null;
 };
 
 /** Valida la API key de un dispositivo y regresa su ficha + empresa. */
@@ -44,7 +48,7 @@ export async function validarDispositivo(
   const { data } = await admin
     .from("dispositivos")
     .select(
-      "id, empresa_id, nombre, tipo, activo, empresas(nombre, activa, config_metodos_habilitados)",
+      "id, empresa_id, nombre, tipo, activo, empresas(nombre, activa, config_metodos_habilitados, plan, logo_data_url, color_marca)",
     )
     .eq("api_key_hash", hashApiKey(clave))
     .eq("activo", true)
@@ -54,15 +58,27 @@ export async function validarDispositivo(
     nombre: string;
     activa: boolean;
     config_metodos_habilitados: string[];
+    plan: string;
+    logo_data_url: string | null;
+    color_marca: string | null;
   };
   if (!empresa?.activa) return null;
+  // El plan acota los métodos aunque la configuración tenga más (Fase 5):
+  // si una empresa baja de plan, el kiosko deja de ofrecer lo no incluido.
+  const plan = obtenerPlan(empresa.plan);
+  const whiteLabel = plan.whiteLabel;
   return {
     id: data.id,
     empresaId: data.empresa_id,
     empresaNombre: empresa.nombre,
     nombre: data.nombre,
     tipo: data.tipo,
-    metodosHabilitados: empresa.config_metodos_habilitados ?? ["pin", "qr"],
+    metodosHabilitados: metodosSegunPlan(
+      plan,
+      empresa.config_metodos_habilitados ?? ["pin", "qr"],
+    ),
+    logoDataUrl: whiteLabel ? empresa.logo_data_url : null,
+    colorMarca: whiteLabel ? empresa.color_marca : null,
   };
 }
 

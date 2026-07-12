@@ -22,6 +22,7 @@ import { encryptNullable } from "@/lib/crypto";
 import { generarPin, hashPin } from "@/lib/auth/pin";
 import { generarSecretoQr } from "@/lib/auth/qr";
 import { encryptField } from "@/lib/crypto";
+import { obtenerPlan, permiteMasEmpleados } from "@/lib/planes";
 
 /** Versión del aviso de privacidad aceptado en el alta (se guarda como evidencia). */
 const VERSION_AVISO_PRIVACIDAD = "v1.0-2026-07";
@@ -85,6 +86,22 @@ export async function crearEmpleado(
   }
 
   const supabase = await createClient();
+
+  // 0) Límite de empleados del plan (Fase 5): se valida en servidor SIEMPRE.
+  const [{ data: empresaPlan }, { count: activos }] = await Promise.all([
+    supabase.from("empresas").select("plan").maybeSingle(),
+    supabase
+      .from("empleados")
+      .select("id", { count: "exact", head: true })
+      .eq("estatus", "activo"),
+  ]);
+  const plan = obtenerPlan(empresaPlan?.plan);
+  if (!permiteMasEmpleados(plan, activos ?? 0)) {
+    return {
+      ok: false,
+      error: `Tu plan ${plan.nombre} permite hasta ${plan.maxEmpleados} empleados activos. Mejora tu plan en Configuración → Plan y facturación.`,
+    };
+  }
 
   // 1) Empleado con campos sensibles cifrados
   const { data: empleado, error: errEmpleado } = await supabase
@@ -239,7 +256,12 @@ export async function cambiarEstatusEmpleado(
   const supabase = await createClient();
   const { error } = await supabase
     .from("empleados")
-    .update({ estatus: nuevoEstatus })
+    .update({
+      estatus: nuevoEstatus,
+      // fecha_baja inicia el periodo de retención ARCO (Fase 5)
+      fecha_baja:
+        nuevoEstatus === "baja" ? new Date().toISOString().slice(0, 10) : null,
+    })
     .eq("id", empleadoId)
     .eq("empresa_id", perfil.empresa_id);
 

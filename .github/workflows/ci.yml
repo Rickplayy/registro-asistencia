@@ -1,0 +1,55 @@
+# CI del Registro de Asistencia (Fase 5).
+#
+# - lint + typecheck + tests unitarios: siempre.
+# - Suite de aislamiento multi-tenant (RLS): corre contra el proyecto Supabase
+#   cuando los secretos están configurados en GitHub →
+#   Settings → Secrets and variables → Actions:
+#     NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+#     SUPABASE_SERVICE_ROLE_KEY, ENCRYPTION_KEY
+#   Sin secretos, el paso se omite explícitamente (no falla en forks).
+name: CI
+
+on:
+  push:
+    branches: ["master", "fase*"]
+  pull_request:
+
+jobs:
+  calidad:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Tests unitarios
+        run: npm run test:unit
+
+  aislamiento-multitenant:
+    runs-on: ubuntu-latest
+    needs: calidad
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Suite de aislamiento (RLS) tabla por tabla
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+            echo "::warning::Secretos de Supabase no configurados: la suite RLS se omite. Configúralos para cumplir el criterio de la Fase 5 en CI."
+            exit 0
+          fi
+          npm run test:rls

@@ -11,6 +11,7 @@ const NAVEGACION = [
   { href: "/reportes", etiqueta: "Reportes" },
   { href: "/dispositivos", etiqueta: "Dispositivos" },
   { href: "/configuracion", etiqueta: "Configuración" },
+  { href: "/plan", etiqueta: "Plan y facturación" },
 ];
 
 const PROXIMAMENTE = [{ etiqueta: "Nómina", fase: "Fase 6" }];

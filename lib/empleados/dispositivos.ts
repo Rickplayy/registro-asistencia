@@ -11,6 +11,7 @@ import { createClient } from "@/lib/db/server";
 import { requerirAdmin } from "@/lib/auth/session";
 import { auditar } from "@/lib/db/auditoria";
 import { hashApiKey } from "@/lib/asistencia/checkin";
+import { obtenerPlan } from "@/lib/planes";
 
 export type AltaDispositivoResult =
   | { ok: true; clave: string; nombre: string }
@@ -37,6 +38,21 @@ export async function crearDispositivo(
   const clave = `${prefijo}-${randomBytes(24).toString("hex")}`;
 
   const supabase = await createClient();
+
+  // Los lectores físicos (agente local) son función del plan Enterprise (Fase 5).
+  if (tipo === "lector_fisico") {
+    const { data: empresaPlan } = await supabase
+      .from("empresas")
+      .select("plan")
+      .maybeSingle();
+    const plan = obtenerPlan(empresaPlan?.plan);
+    if (!plan.lectoresFisicos) {
+      return {
+        ok: false,
+        error: `Los lectores físicos requieren el plan Enterprise (tu plan: ${plan.nombre}).`,
+      };
+    }
+  }
   const { data, error } = await supabase
     .from("dispositivos")
     .insert({
