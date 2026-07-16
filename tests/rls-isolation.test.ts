@@ -197,6 +197,49 @@ describe("Aislamiento multi-tenant (RLS emulado)", () => {
     }
   });
 
+  it("admin A no puede MOVER sus propias filas a la empresa B (with check)", async () => {
+    // Sin la emulación del WITH CHECK, esto reasignaría el empleado al tenant B.
+    const { data, error } = await tenantA.cliente
+      .from("empleados")
+      .update({ empresa_id: tenantB.empresaId })
+      .eq("id", tenantA.empleadoId)
+      .select("id");
+    expect(error?.code).toBe("42501");
+    expect(data).toBeNull();
+
+    const { data: intacto } = await service
+      .from("empleados")
+      .select("empresa_id")
+      .eq("id", tenantA.empleadoId)
+      .single<{ empresa_id: string }>();
+    expect(intacto?.empresa_id).toBe(tenantA.empresaId);
+  });
+
+  it("auth_users no es alcanzable vía from() en ningún contexto ni acción", async () => {
+    for (const cliente of [service, tenantA.cliente, crearClienteAnon()]) {
+      const { data, error } = await cliente.from("auth_users").select("*");
+      expect(error?.code).toBe("42P01");
+      expect(data).toBeNull();
+
+      const { error: errIns } = await cliente
+        .from("auth_users")
+        .insert({ email: "intruso@example.com", password_hash: "x" });
+      expect(errIns?.code).toBe("42P01");
+
+      const { error: errUpd } = await cliente
+        .from("auth_users")
+        .update({ password_hash: "x" })
+        .eq("email", tenantA.adminEmail);
+      expect(errUpd?.code).toBe("42P01");
+
+      const { error: errDel } = await cliente
+        .from("auth_users")
+        .delete()
+        .eq("email", tenantA.adminEmail);
+      expect(errDel?.code).toBe("42P01");
+    }
+  });
+
   it("las marcaciones son inmutables para el cliente de sesión (solo SELECT)", async () => {
     // Ni siquiera el admin de la PROPIA empresa puede insertar/editar marcaciones.
     const { error: errInsert } = await tenantA.cliente

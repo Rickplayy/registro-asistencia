@@ -77,6 +77,14 @@ async function buscarPorPin(
   empresaId: string,
   pin: string,
 ): Promise<EmpleadoMetodo | null> {
+  // Un PIN con formato inválido no debe tirar la petición (hashPin lanza):
+  // se trata igual que un PIN incorrecto.
+  let pinHash: string;
+  try {
+    pinHash = hashPin(pin, empresaId);
+  } catch {
+    return null;
+  }
   const admin = createAdminClient();
   const { data } = await admin
     .from("metodos_acceso")
@@ -84,7 +92,7 @@ async function buscarPorPin(
     .eq("empresa_id", empresaId)
     .eq("tipo", "pin")
     .eq("activo", true)
-    .eq("valor_hash_o_token", hashPin(pin, empresaId))
+    .eq("valor_hash_o_token", pinHash)
     .maybeSingle();
   if (!data) return null;
   const emp = data.empleados as unknown as { nombre: string; estatus: string };

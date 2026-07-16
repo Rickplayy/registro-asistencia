@@ -11,6 +11,7 @@
  * completo del flujo del kiosko (que usa su propia cookie ra_kiosko).
  */
 import {
+  createHash,
   createHmac,
   hkdfSync,
   randomBytes,
@@ -36,12 +37,17 @@ export type UsuarioLocal = {
 // ---------------------------------------------------------------------------
 
 const SCRYPT_LARGO = 64;
+export const PASSWORD_MIN = 8;
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16);
   const hash = scryptSync(password, salt, SCRYPT_LARGO);
   return `scrypt$${salt.toString("base64")}$${hash.toString("base64")}`;
 }
+
+// Hash señuelo: cuando el correo NO existe se verifica contra esto de todas
+// formas, para que el tiempo de respuesta no revele qué correos hay.
+const HASH_SENUELO = hashPassword(randomBytes(32).toString("base64"));
 
 function verificarPassword(password: string, guardado: string): boolean {
   const partes = guardado.split("$");
@@ -66,6 +72,15 @@ export function crearCuenta(email: string, password: string): ResultadoCuenta {
     return {
       user: null,
       error: { message: "Correo y contraseña son obligatorios.", code: "validation_failed" },
+    };
+  }
+  if (password.length < PASSWORD_MIN) {
+    return {
+      user: null,
+      error: {
+        message: `La contraseña debe tener al menos ${PASSWORD_MIN} caracteres.`,
+        code: "weak_password",
+      },
     };
   }
   const db = obtenerDb();
@@ -100,19 +115,58 @@ export function obtenerCuenta(id: string): UsuarioLocal | null {
   return fila ?? null;
 }
 
-/** Valida credenciales; regresa la cuenta o null (mensaje único, sin filtrar cuáles correos existen). */
+// ---------------------------------------------------------------------------
+// Freno anti fuerza bruta del login (memoria del proceso, por correo)
+// ---------------------------------------------------------------------------
+
+const LOGIN_MAX_FALLOS = 5;
+const LOGIN_VENTANA_MS = 15 * 60 * 1000;
+const fallosLogin = new Map<string, number[]>();
+
+function fallosVigentes(correo: string): number[] {
+  const ahora = Date.now();
+  const lista = (fallosLogin.get(correo) ?? []).filter(
+    (t) => ahora - t < LOGIN_VENTANA_MS,
+  );
+  if (lista.length) fallosLogin.set(correo, lista);
+  else fallosLogin.delete(correo);
+  // Poda defensiva para que el mapa no crezca sin límite.
+  if (fallosLogin.size > 10_000) {
+    for (const [k, v] of fallosLogin) {
+      if (!v.some((t) => ahora - t < LOGIN_VENTANA_MS)) fallosLogin.delete(k);
+    }
+  }
+  return lista;
+}
+
+/**
+ * Valida credenciales; regresa la cuenta o null (mensaje único, sin filtrar
+ * cuáles correos existen). Endurecido:
+ *  - tiempo constante aunque el correo no exista (hash señuelo);
+ *  - tras 5 fallos en 15 min el correo queda bloqueado temporalmente.
+ */
 export function verificarCredenciales(
   email: string,
   password: string,
 ): UsuarioLocal | null {
+  const correo = email.trim().toLowerCase();
+  const bloqueado = fallosVigentes(correo).length >= LOGIN_MAX_FALLOS;
+
   const fila = obtenerDb()
     .prepare(
       "select id, email, password_hash, created_at from auth_users where email = ? collate nocase",
     )
-    .get(email.trim().toLowerCase()) as
-    | (UsuarioLocal & { password_hash: string })
-    | undefined;
-  if (!fila || !verificarPassword(password, fila.password_hash)) return null;
+    .get(correo) as (UsuarioLocal & { password_hash: string }) | undefined;
+
+  const valida = verificarPassword(password, fila?.password_hash ?? HASH_SENUELO);
+
+  if (bloqueado || !fila || !valida) {
+    const lista = fallosLogin.get(correo) ?? [];
+    lista.push(Date.now());
+    fallosLogin.set(correo, lista);
+    return null;
+  }
+  fallosLogin.delete(correo);
   return { id: fila.id, email: fila.email, created_at: fila.created_at };
 }
 
@@ -133,20 +187,37 @@ function firmar(payloadB64: string): string {
   return createHmac("sha256", llaveSesion()).update(payloadB64).digest("base64url");
 }
 
+/**
+ * Huella corta del password_hash vigente. Viaja dentro del token (claim
+ * "pwd") para que cambiar la contraseña invalide TODAS las sesiones
+ * emitidas antes del cambio.
+ */
+function huellaPassword(passwordHash: string): string {
+  return createHash("sha256").update(passwordHash).digest("hex").slice(0, 16);
+}
+
 export function emitirTokenSesion(user: UsuarioLocal): string {
+  const fila = obtenerDb()
+    .prepare("select password_hash from auth_users where id = ?")
+    .get(user.id) as { password_hash: string } | undefined;
+  if (!fila) throw new Error("No existe la cuenta para emitir sesión.");
   const payload = Buffer.from(
     JSON.stringify({
       sub: user.id,
       email: user.email,
+      pwd: huellaPassword(fila.password_hash),
       exp: Math.floor(Date.now() / 1000) + SESION_DIAS * 24 * 60 * 60,
     }),
   ).toString("base64url");
   return `${payload}.${firmar(payload)}`;
 }
 
+export type SesionVerificada = { id: string; email: string; pwd: string };
+
+/** Verifica firma y vigencia del token (sin tocar la base — apto para proxy). */
 export function verificarTokenSesion(
   token: string | undefined | null,
-): { id: string; email: string } | null {
+): SesionVerificada | null {
   if (!token) return null;
   const partes = token.split(".");
   if (partes.length !== 2) return null;
@@ -159,8 +230,29 @@ export function verificarTokenSesion(
     const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
     if (typeof payload.sub !== "string" || typeof payload.exp !== "number") return null;
     if (payload.exp * 1000 < Date.now()) return null;
-    return { id: payload.sub, email: String(payload.email ?? "") };
+    return {
+      id: payload.sub,
+      email: String(payload.email ?? ""),
+      pwd: String(payload.pwd ?? ""),
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * Validación completa de una sesión (token + estado en la base): la cuenta
+ * debe seguir existiendo y la contraseña no haber cambiado desde la emisión.
+ */
+export function sesionVigente(
+  sesion: SesionVerificada | null,
+): UsuarioLocal | null {
+  if (!sesion) return null;
+  const fila = obtenerDb()
+    .prepare(
+      "select id, email, password_hash, created_at from auth_users where id = ?",
+    )
+    .get(sesion.id) as (UsuarioLocal & { password_hash: string }) | undefined;
+  if (!fila || huellaPassword(fila.password_hash) !== sesion.pwd) return null;
+  return { id: fila.id, email: fila.email, created_at: fila.created_at };
 }

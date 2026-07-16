@@ -33,6 +33,25 @@ interfaz, por lo que el resto del código de la app no cambió.
 - PIN solo como hash HMAC; QR rotativo TOTP; login admin separado del kiosko.
 - La base jamás se expone al navegador (no existe cliente de datos de browser).
 
+## Endurecimiento (auditoría 2026-07)
+
+- **WITH CHECK emulado en UPDATE**: un cliente de sesión no puede reasignar
+  filas a otro tenant cambiando `empresa_id` (error 42501, como en Postgres).
+- **`auth_users` inalcanzable vía `from()`** en cualquier contexto y acción
+  (42P01), igual que PostgREST no expone el esquema `auth`.
+- **Joins embebidos** (`empresas(nombre)`) también respetan el alcance RLS de
+  la tabla relacionada.
+- **Login**: tiempo constante aunque el correo no exista (hash señuelo) y
+  bloqueo temporal tras 5 intentos fallidos en 15 min por correo.
+- **Sesiones**: el token lleva una huella del hash de contraseña; cambiar la
+  contraseña (p. ej. con `npm run reset-password`) o borrar la cuenta invalida
+  todas las sesiones emitidas antes.
+- **Kiosko**: freno anti fuerza bruta por dispositivo (10 fallos/min) y un PIN
+  con formato inválido responde 422, no 500.
+- **Headers**: `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` y
+  `Permissions-Policy` en todas las respuestas (next.config.ts).
+- Cobertura en `tests/rls-isolation.test.ts` y `tests/auth-local.test.ts`.
+
 ## Limitaciones del modo local
 
 - **Recuperar contraseña**: no hay correo saliente. `/login/recuperar` responde

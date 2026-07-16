@@ -29,6 +29,7 @@ import {
   crearCuenta,
   emitirTokenSesion,
   obtenerCuenta,
+  sesionVigente,
   verificarCredenciales,
   verificarTokenSesion,
   type UsuarioLocal,
@@ -392,7 +393,7 @@ export class ConsultaLocal implements PromiseLike<Resultado> {
   }
 
   limit(n: number): this {
-    this.limite = n;
+    if (Number.isFinite(n) && n >= 0) this.limite = Math.floor(n);
     return this;
   }
 
@@ -417,15 +418,33 @@ export class ConsultaLocal implements PromiseLike<Resultado> {
 
   // -- Ejecución -------------------------------------------------------------
 
-  private alcance(accion: "select" | "update" | "delete"): Alcance {
+  private alcance(
+    accion: "select" | "update" | "delete",
+    tabla: string = this.tabla,
+  ): Alcance {
     const ctx = this.resolverContexto();
     if (ctx.tipo === "service") return TODO;
     if (ctx.tipo === "anon") return NADA;
     const perfil = perfilActivo(ctx.authUserId);
     if (!perfil) return NADA;
-    const regla = POLITICAS[this.tabla]?.[accion];
+    const regla = POLITICAS[tabla]?.[accion];
     if (!regla) return NADA;
     return regla(perfil, ctx.authUserId);
+  }
+
+  /**
+   * Emulación del WITH CHECK de las políticas de UPDATE: la fila resultante
+   * debe seguir perteneciendo a la empresa del usuario. Sin esto, un admin
+   * podría "mover" filas propias a otro tenant cambiando empresa_id.
+   */
+  private violaWithCheck(cambios: Record<string, unknown>): boolean {
+    const ctx = this.resolverContexto();
+    if (ctx.tipo === "service") return false;
+    const perfil = ctx.tipo === "usuario" ? perfilActivo(ctx.authUserId) : null;
+    const columnaTenant = this.tabla === "empresas" ? "id" : "empresa_id";
+    return (
+      columnaTenant in cambios && cambios[columnaTenant] !== perfil?.empresa_id
+    );
   }
 
   private permitirInsercion(fila: Record<string, unknown>): boolean {
@@ -481,21 +500,33 @@ export class ConsultaLocal implements PromiseLike<Resultado> {
     const db = obtenerDb();
     for (const rel of seleccion.relaciones) {
       const fk = FK_RELACIONES[rel.tabla];
-      if (!fk) {
+      if (!fk || !TABLAS[rel.tabla]) {
         throw new Error(
           `Relación embebida no soportada: ${this.tabla} → ${rel.tabla}`,
         );
       }
-      const stmt = db.prepare(`select * from "${rel.tabla}" where "id" = ?`);
+      // La fila embebida también respeta el alcance RLS de SU tabla (igual
+      // que en PostgREST): fuera de alcance ⇒ null, aunque la FK exista.
+      const alcanceRel = this.alcance("select", rel.tabla);
+      if (alcanceRel.tipo === "nada") {
+        for (const fila of filas) fila[rel.tabla] = null;
+        continue;
+      }
+      const extra =
+        alcanceRel.tipo === "filtro" ? ` and (${alcanceRel.sql})` : "";
+      const paramsRel = alcanceRel.tipo === "filtro" ? alcanceRel.params : [];
+      const stmt = db.prepare(
+        `select * from "${rel.tabla}" where "id" = ?${extra}`,
+      );
       for (const fila of filas) {
         const idRelacion = fila[fk];
         if (idRelacion == null) {
           fila[rel.tabla] = null;
           continue;
         }
-        const cruda = stmt.get(idRelacion as string) as
-          | Record<string, unknown>
-          | undefined;
+        const cruda = stmt.get(
+          ...([idRelacion, ...paramsRel] as string[]),
+        ) as Record<string, unknown> | undefined;
         if (!cruda) {
           fila[rel.tabla] = null;
           continue;
@@ -545,6 +576,21 @@ export class ConsultaLocal implements PromiseLike<Resultado> {
   }
 
   private ejecutar(): Resultado {
+    // Solo las tablas "públicas" del esquema existen para from(); auth_users y
+    // las tablas internas de SQLite quedan fuera del alcance de CUALQUIER
+    // acción y contexto (igual que PostgREST no expone el esquema auth).
+    if (!TABLAS[this.tabla]) {
+      return {
+        data: null,
+        error: {
+          message: `relation "public.${this.tabla}" does not exist`,
+          code: "42P01",
+          details: null,
+          hint: null,
+        },
+        count: null,
+      };
+    }
     try {
       switch (this.accion) {
         case "select":
@@ -563,18 +609,6 @@ export class ConsultaLocal implements PromiseLike<Resultado> {
 
   private ejecutarSelect(): Resultado {
     const db = obtenerDb();
-    if (!TABLAS[this.tabla]) {
-      return {
-        data: null,
-        error: {
-          message: `relation "public.${this.tabla}" does not exist`,
-          code: "42P01",
-          details: null,
-          hint: null,
-        },
-        count: null,
-      };
-    }
     const alcance = this.alcance("select");
     const { sql: donde, params } = this.condicionesSql(alcance);
 
@@ -658,6 +692,9 @@ export class ConsultaLocal implements PromiseLike<Resultado> {
         if (valor === undefined) continue;
         cambios[validarIdentificador(col)] = aSqlite(this.tabla, col, valor);
       }
+      if (this.violaWithCheck(cambios)) {
+        return { data: null, error: ERROR_RLS, count: null };
+      }
       if (meta?.conUpdatedAt && !("updated_at" in cambios)) {
         cambios.updated_at = new Date().toISOString();
       }
@@ -723,11 +760,12 @@ function crearCliente(
 
   function resolverContexto(): Contexto {
     if (contexto) return contexto;
-    const sesion = verificarTokenSesion(cookies?.get(COOKIE_SESION));
-    // Igual que auth.getUser(): la cuenta debe seguir existiendo.
-    if (sesion && obtenerCuenta(sesion.id)) {
-      return { tipo: "usuario", authUserId: sesion.id };
-    }
+    // Validación completa: firma + vigencia + la cuenta sigue existiendo y
+    // la contraseña no cambió desde que se emitió el token.
+    const cuenta = sesionVigente(
+      verificarTokenSesion(cookies?.get(COOKIE_SESION)),
+    );
+    if (cuenta) return { tipo: "usuario", authUserId: cuenta.id };
     return { tipo: "anon" };
   }
 
