@@ -28,6 +28,19 @@ Abre <http://localhost:3000/registro> y llena el formulario: crea la empresa,
 la cuenta del administrador e inicia sesión de una vez. (Ya no hace falta
 sembrar nada por SQL.)
 
+### Opción rápida: base de demo con datos de prueba
+
+Para probar sin capturar nada a mano, siembra una empresa con **15 empleados**
+(con PIN y QR), 2 kioskos y ~2 semanas de asistencia:
+
+```bash
+npm run seed:demo
+```
+
+Imprime las credenciales del admin, las claves de los kioskos y el PIN de cada
+empleado. Es idempotente (rehacerlo re-siembra la empresa de demo). Detén el
+servidor antes de correrlo si está usando la misma base.
+
 ## 3. Pruebas
 
 ```bash
@@ -49,6 +62,7 @@ nada), y limpia todo al final. **Debe pasar antes de avanzar de fase.**
 | `npm run build` | Build de producción |
 | `npm run generate:key` | Nueva llave AES-256 en base64 |
 | `npm run reset-password -- <email> <contraseña>` | Reinicia la contraseña de una cuenta local |
+| `npm run seed:demo` | Siembra una empresa de demo (admin + 15 empleados + asistencia) |
 
 ## Probar el flujo completo de la Fase 1 (MVP)
 

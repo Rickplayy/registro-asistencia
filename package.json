@@ -13,7 +13,8 @@
     "test:unit": "vitest run tests/crypto.test.ts tests/pin-qr.test.ts tests/reporte.test.ts",
     "test:rls": "vitest run tests/rls-isolation.test.ts",
     "generate:key": "node scripts/generate-key.mjs",
-    "reset-password": "node scripts/reset-password-local.mjs"
+    "reset-password": "node scripts/reset-password-local.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs"
   },
   "engines": {
     "node": ">=22.5"
