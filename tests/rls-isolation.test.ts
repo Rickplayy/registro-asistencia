@@ -1,48 +1,41 @@
 /**
- * Prueba de aislamiento multi-tenant (Row Level Security).
+ * Prueba de aislamiento multi-tenant (emulación RLS del modo local).
  *
- * REGLA DEL PROYECTO: no se avanza a la Fase 1 sin que esta prueba pase.
+ * REGLA DEL PROYECTO: no se avanza de fase sin que esta prueba pase.
  *
- * Corre contra un proyecto Supabase real con las migraciones aplicadas:
+ * Corre contra el motor local (SQLite en memoria, ver tests/setup-env.ts):
  *   npm run test:rls
- *
- * Requiere en .env.local (o el entorno):
- *   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
- *   SUPABASE_SERVICE_ROLE_KEY (solo para sembrar/limpiar datos de prueba).
  *
  * Escenario: dos empresas (A y B), un admin y un empleado en cada una.
  * Se verifica que el admin de A no pueda leer, insertar ni actualizar datos
  * de B por ningún camino, y que el rol anon no vea absolutamente nada.
+ * Es el mismo contrato que garantizaban las políticas RLS de Supabase
+ * (supabase/migrations/20260709000002_rls_policies.sql), ahora emulado por
+ * lib/local/client.ts.
  */
 import { randomBytes, randomUUID } from "node:crypto";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const configurado = Boolean(URL && ANON_KEY && SERVICE_KEY);
-
-if (!configurado) {
-  console.warn(
-    "\n[test:rls] OMITIDO: faltan NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY en .env.local.\n" +
-      "Esta prueba DEBE pasar contra el proyecto Supabase real antes de avanzar a la Fase 1.\n",
-  );
-}
+import {
+  crearClienteAnon,
+  crearClienteServicio,
+  crearClienteUsuario,
+  type ClienteLocal,
+} from "@/lib/local/client";
+import { verificarCredenciales } from "@/lib/local/auth";
 
 type Tenant = {
   empresaId: string;
   empleadoId: string;
   adminAuthId: string;
   adminEmail: string;
-  cliente: SupabaseClient; // sesión iniciada como admin de esta empresa
+  cliente: ClienteLocal; // sesión iniciada como admin de esta empresa
 };
 
 const PASSWORD = `Prueba-${randomBytes(12).toString("hex")}!`;
 
-describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
-  let service: SupabaseClient;
+describe("Aislamiento multi-tenant (RLS emulado)", () => {
+  let service: ClienteLocal;
   let tenantA: Tenant;
   let tenantB: Tenant;
 
@@ -54,7 +47,7 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       .from("empresas")
       .insert({ nombre: `RLS Test ${nombre} ${sufijo}` })
       .select("id")
-      .single();
+      .single<{ id: string }>();
     if (errEmpresa) throw errEmpresa;
 
     const { data: authUser, error: errAuth } =
@@ -63,11 +56,11 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
         password: PASSWORD,
         email_confirm: true,
       });
-    if (errAuth) throw errAuth;
+    if (errAuth || !authUser.user) throw errAuth;
 
     const { error: errPerfil } = await service.from("usuarios_admin").insert({
       auth_user_id: authUser.user.id,
-      empresa_id: empresa.id,
+      empresa_id: empresa!.id,
       nombre: `Admin ${nombre}`,
       email: adminEmail,
       rol: "admin_empresa",
@@ -77,26 +70,22 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
     const { data: empleado, error: errEmpleado } = await service
       .from("empleados")
       .insert({
-        empresa_id: empresa.id,
+        empresa_id: empresa!.id,
         nombre: `Empleado ${nombre}`,
         puesto: "Prueba",
       })
       .select("id")
-      .single();
+      .single<{ id: string }>();
     if (errEmpleado) throw errEmpleado;
 
-    const cliente = createClient(URL!, ANON_KEY!, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-    const { error: errLogin } = await cliente.auth.signInWithPassword({
-      email: adminEmail,
-      password: PASSWORD,
-    });
-    if (errLogin) throw errLogin;
+    // Login real (verifica la contraseña) y cliente con esa identidad.
+    const cuenta = verificarCredenciales(adminEmail, PASSWORD);
+    if (!cuenta) throw new Error("Credenciales de prueba rechazadas.");
+    const cliente = crearClienteUsuario(cuenta.id);
 
     return {
-      empresaId: empresa.id,
-      empleadoId: empleado.id,
+      empresaId: empresa!.id,
+      empleadoId: empleado!.id,
       adminAuthId: authUser.user.id,
       adminEmail,
       cliente,
@@ -104,9 +93,7 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
   }
 
   beforeAll(async () => {
-    service = createClient(URL!, SERVICE_KEY!, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    service = crearClienteServicio();
     tenantA = await crearTenant("A");
     tenantB = await crearTenant("B");
   }, 60_000);
@@ -127,7 +114,7 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
   it("cada admin ve únicamente su propia empresa", async () => {
     const { data, error } = await tenantA.cliente.from("empresas").select("id");
     expect(error).toBeNull();
-    const ids = (data ?? []).map((e) => e.id);
+    const ids = (data ?? []).map((e: { id: string }) => e.id);
     expect(ids).toContain(tenantA.empresaId);
     expect(ids).not.toContain(tenantB.empresaId);
   });
@@ -138,10 +125,12 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       .select("id, empresa_id");
     expect(listado ?? []).not.toHaveLength(0);
     expect(
-      (listado ?? []).every((e) => e.empresa_id === tenantA.empresaId),
+      (listado ?? []).every(
+        (e: { empresa_id: string }) => e.empresa_id === tenantA.empresaId,
+      ),
     ).toBe(true);
 
-    // Acceso directo por id conocido de otro tenant → RLS devuelve vacío
+    // Acceso directo por id conocido de otro tenant → alcance vacío
     const { data: directo } = await tenantA.cliente
       .from("empleados")
       .select("id")
@@ -177,7 +166,7 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       .from("empleados")
       .select("nombre")
       .eq("id", tenantB.empleadoId)
-      .single();
+      .single<{ nombre: string }>();
     expect(intacto?.nombre).toBe("Empleado B");
   });
 
@@ -186,7 +175,9 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
       .from("usuarios_admin")
       .select("empresa_id");
     expect(
-      (admins ?? []).every((u) => u.empresa_id === tenantA.empresaId),
+      (admins ?? []).every(
+        (u: { empresa_id: string }) => u.empresa_id === tenantA.empresaId,
+      ),
     ).toBe(true);
 
     for (const tabla of [
@@ -206,10 +197,28 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
     }
   });
 
+  it("las marcaciones son inmutables para el cliente de sesión (solo SELECT)", async () => {
+    // Ni siquiera el admin de la PROPIA empresa puede insertar/editar marcaciones.
+    const { error: errInsert } = await tenantA.cliente
+      .from("registros_asistencia")
+      .insert({
+        empleado_id: tenantA.empleadoId,
+        empresa_id: tenantA.empresaId,
+        metodo: "pin",
+        tipo: "entrada",
+      });
+    expect(errInsert).not.toBeNull();
+
+    const { data: editados } = await tenantA.cliente
+      .from("registros_asistencia")
+      .update({ tipo: "salida" })
+      .eq("empresa_id", tenantA.empresaId)
+      .select("id");
+    expect(editados).toEqual([]);
+  });
+
   it("el rol anon (sin sesión) no ve absolutamente nada", async () => {
-    const anon = createClient(URL!, ANON_KEY!, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const anon = crearClienteAnon();
     for (const tabla of [
       "empresas",
       "empleados",
@@ -227,9 +236,7 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
   });
 
   it("anon tampoco puede insertar en tablas sensibles", async () => {
-    const anon = createClient(URL!, ANON_KEY!, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const anon = crearClienteAnon();
     const { error } = await anon.from("registros_asistencia").insert({
       empleado_id: tenantA.empleadoId,
       empresa_id: tenantA.empresaId,
@@ -238,8 +245,4 @@ describe.runIf(configurado)("Aislamiento multi-tenant (RLS)", () => {
     });
     expect(error).not.toBeNull();
   });
-});
-
-describe.runIf(!configurado)("Aislamiento multi-tenant (RLS)", () => {
-  it.skip("requiere credenciales de Supabase en .env.local — ver docs/SETUP.md", () => {});
 });

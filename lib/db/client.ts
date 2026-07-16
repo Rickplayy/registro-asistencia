@@ -1,9 +1,11 @@
-/** Cliente Supabase para componentes de cliente (navegador). Usa la anon key: el acceso a datos siempre queda acotado por RLS. */
-import { createBrowserClient } from "@supabase/ssr";
-
-export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+/**
+ * Modo local: la base NUNCA se expone al navegador (regla 5 de
+ * ARCHITECTURE.md). No existe un cliente de datos de navegador: todas las
+ * lecturas/escrituras pasan por Server Components, Server Actions o API
+ * routes con lib/db/server o lib/db/admin.
+ */
+export function createClient(): never {
+  throw new Error(
+    "En modo local no hay cliente de datos en el navegador: usa lib/db/server (sesión) o lib/db/admin (servicio) desde el servidor.",
   );
 }

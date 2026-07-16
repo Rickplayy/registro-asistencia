@@ -10,8 +10,13 @@ del **1 de enero de 2027**.
 
 ## Stack
 
-Next.js (App Router) + TypeScript + Tailwind CSS + shadcn/ui · PostgreSQL vía
-Supabase (Auth + RLS + Storage) · Vercel + Supabase (MVP).
+Next.js (App Router) + TypeScript + Tailwind CSS + shadcn/ui.
+
+> **Rama `local`**: base de datos y autenticación 100 % locales — SQLite vía
+> `node:sqlite` + auth propia (scrypt + cookies firmadas), sin Supabase ni
+> ningún servicio externo. `npm install && npm run dev` y listo. Detalles en
+> [docs/LOCAL.md](./docs/LOCAL.md). (En `master`, el stack original es
+> PostgreSQL vía Supabase con Auth + RLS, pensado para Vercel + Supabase.)
 
 ## Estado
 
@@ -24,6 +29,5 @@ Supabase (Auth + RLS + Storage) · Vercel + Supabase (MVP).
   Excel/CSV, auditoría activa. Ver el flujo de prueba en
   [docs/SETUP.md](./docs/SETUP.md).
 
-> Pendiente para activar en producción: conectar credenciales de Supabase en
-> `.env.local`, aplicar migraciones (`npm run db:push`) y correr
-> `npm run test:rls`.
+> En esta rama no hay nada que conectar: la base y la autenticación son
+> locales. Verifica el aislamiento multi-tenant con `npm run test:rls`.

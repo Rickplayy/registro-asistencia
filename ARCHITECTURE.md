@@ -13,8 +13,12 @@ exige registro electrónico y verificable a partir del **1 de enero de 2027**.
 ## Stack (decidido, no cambiar sin actualizar este archivo)
 
 - **Frontend/Backend**: Next.js 16 App Router + TypeScript + Tailwind CSS v4 + shadcn/ui — monolito modular, sin microservicios.
-- **Base de datos**: PostgreSQL vía Supabase (Auth + Row Level Security + Storage).
-- **Hosting MVP**: Vercel + Supabase.
+- **Base de datos (rama `local`)**: SQLite vía `node:sqlite` (integrado en
+  Node ≥ 22.5) + autenticación propia (`lib/local/`): cuentas con scrypt,
+  sesión en cookie httpOnly firmada (HMAC), y emulación fiel de las políticas
+  RLS por `empresa_id`. **Cero servicios externos**; ver `docs/LOCAL.md`.
+  (En `master`: PostgreSQL vía Supabase — Auth + Row Level Security + Storage.)
+- **Hosting MVP**: servidor local / una sola instancia Node (en `master`: Vercel + Supabase).
 - **Paleta**: "Confianza corporativa" (sección 7.1 del doc maestro): marca `#1E3A5F`, interactivo `#2563EB`, éxito `#16A34A`, advertencia `#F59E0B`, error `#DC2626`. Verde/ámbar/rojo son fijos en cualquier tema.
 
 ## Estructura del repo (sección 12 del doc maestro)
@@ -28,7 +32,8 @@ registro-asistencia/
 │   └── api/                → API routes (asistencia, empleados, nomina, auth)
 ├── components/             → componentes UI reutilizables (shadcn/ui)
 ├── lib/
-│   ├── db/                 → clientes Supabase (client/server/admin) + auditoría
+│   ├── local/              → (rama local) motor SQLite, auth propia y cliente con RLS emulado
+│   ├── db/                 → clientes de datos (server/admin) + auditoría — misma interfaz que antes
 │   ├── crypto/             → cifrado AES-256-GCM de campos sensibles
 │   ├── auth/               → sesión admin, onboarding, PIN (hash) y QR (TOTP)
 │   ├── asistencia/         → check-in del kiosko, métricas, reportes, export
@@ -36,7 +41,8 @@ registro-asistencia/
 │   ├── biometria/          → plantillas faciales/huella (Fases 2-3)
 │   └── nomina/             → motor de incidencias y exportación (Fase 6)
 ├── supabase/
-│   ├── migrations/         → esquema SQL versionado (fuente de verdad)
+│   ├── migrations/         → esquema SQL original (referencia; en la rama local
+│   │                          la fuente de verdad es lib/local/schema.ts)
 │   └── policies/           → documentación RLS por tabla
 ├── agente-local/           → (opcional) integración lectores físicos (Fase 3)
 ├── docs/                   → documento maestro + guías

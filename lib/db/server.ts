@@ -1,28 +1,25 @@
-/** Cliente Supabase para Server Components, Server Actions y Route Handlers. Mantiene la sesión en cookies (@supabase/ssr). */
-import { createServerClient } from "@supabase/ssr";
+/**
+ * Cliente de datos para Server Components, Server Actions y Route Handlers.
+ * Modo local: SQLite + auth propia (lib/local); la sesión viaja en la cookie
+ * httpOnly ra_session y el acceso queda acotado por la emulación RLS.
+ */
 import { cookies } from "next/headers";
 
-export async function createClient() {
+import { crearClienteSesion, type ClienteLocal } from "@/lib/local/client";
+
+export async function createClient(): Promise<ClienteLocal> {
   const cookieStore = await cookies();
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
-            );
-          } catch {
-            // Llamado desde un Server Component: el middleware refresca la sesión.
-          }
-        },
-      },
+  return crearClienteSesion({
+    get(nombre) {
+      return cookieStore.get(nombre)?.value;
     },
-  );
+    set(nombre, valor, opciones) {
+      try {
+        cookieStore.set(nombre, valor, opciones);
+      } catch {
+        // Llamado desde un Server Component: solo el proxy/actions pueden escribir cookies.
+      }
+    },
+  });
 }

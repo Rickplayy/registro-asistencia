@@ -3,7 +3,7 @@
  * datos sensibles. Es "best effort": un fallo al auditar se reporta en consola
  * pero no revienta la operación de negocio (la tabla es INSERT-only vía RLS).
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ClienteDatos } from "@/lib/local/client";
 
 export type AccionAuditoria =
   | "empleado.alta"
@@ -19,7 +19,7 @@ export type AccionAuditoria =
   | "dispositivo.desactivacion";
 
 export async function auditar(
-  supabase: SupabaseClient,
+  supabase: ClienteDatos,
   entrada: {
     usuarioAdminId: string;
     empresaId: string;
